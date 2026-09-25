@@ -10,3 +10,5 @@ class AuditLog(base):
     target_url = Column(String)
     created_at = Column(DateTime)
     audit_data = Column(JSON)
+
+    
