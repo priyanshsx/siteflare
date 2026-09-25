@@ -1,7 +1,5 @@
 Insights we're gathering: 
 
-
-
 Generic
 1. Google PageSpeed Insights: LCP, FID/INP, CLS, TTFB, and an overall performance score. 
 2. Page Load Time, total page size, number of requests - extractable via requests/httpx
