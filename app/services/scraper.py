@@ -134,8 +134,28 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # accessibility check 
-        
+        missing_labels = 0
+        total_inputs = 0
 
+        input_field = soup.find_all("input")
+
+        for field in input_field:
+            if field.get("type") == "hidden" or field.get("type") == "submit":
+                continue
+            else:
+                total_inputs += 1
+
+                if not field.get("aria-label"):
+                    input_id = field.get("id")
+                    if not input_id:
+                        missing_labels += 1
+                    else:
+                        find_input = soup.find("label", attrs={"for": input_id})
+
+                        if not find_input:
+                            missing_labels += 1
+        audit_results["accessibility"]["missing_labels"] = missing_labels 
+        audit_results["accessibility"]["total_inputs"] = total_inputs    
         # ------------------------------------------------------------- #
 
 
