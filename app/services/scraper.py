@@ -10,9 +10,19 @@ async def scrape_website(url):
         soup = BeautifulSoup(response.text, "html.parser")
 
         audit_results = {"seo": {}, "socials": {}, "content": {}, "accessibility": {}}
+        audit_results["seo"]["schema_detected"] = False
         audit_results["security"] = {}
         audit_results["performance"] = {}
         audit_results["tracking"] = {"google_analytics": False, "meta_pixel": False}
+        # ------------------------------------------------------------- #
+
+        # schema check
+        script_tags = soup.find_all("script", attrs={"type": "application/ld+json"})
+
+        if not script_tags:
+            audit_results["seo"]["schema_detected"] = False
+        else:
+            audit_results["seo"]["schema_detected"] = True
         # ------------------------------------------------------------- #
 
         # security check 
@@ -124,7 +134,7 @@ async def scrape_website(url):
         favicon = soup.find("link", attrs={"rel": "icon"})
 
         if not favicon:
-            favicon = soup.find("link", attrs={"rel": "shortcut_icon"})
+            favicon = soup.find("link", attrs={"rel": "shortcut icon"})
 
             if not favicon:
                 audit_results["socials"]["favicon"] = "None"
