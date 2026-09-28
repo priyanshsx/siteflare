@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 # ------------------------------------------------------------- #
 
 # AI bots 
@@ -19,6 +20,24 @@ AI_BOTS = {
     "Applebot-Extended": "Apple (AI training)",
     "CCBot": "Common Crawl",
 }
+# ------------------------------------------------------------- #
+
+# raw vs rendered settings 
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+MIN_WORDS = 50          # below this the page is too thin to judge
+PASS_RATIO = 0.80       # raw HTML has >= 80% of the rendered text
+PARTIAL_RATIO = 0.40    # 40%-80% = partial, below 40% = fail
+# ------------------------------------------------------------- #
+
+# helper: counts visible words (ignores scripts, styles etc.)
+def count_visible_words(html):
+    clean_soup = BeautifulSoup(html, "html.parser")
+    for tag in clean_soup(["script", "style", "noscript", "template", "svg"]):
+        tag.decompose()
+    return len(clean_soup.get_text(" ", strip=True).split())
 # ------------------------------------------------------------- #
 
 # defining the main function 
@@ -75,6 +94,51 @@ async def scrape_website(url):
         # parsing html using beautiful soup
         response = await client.get(url, follow_redirects=True)
         soup = BeautifulSoup(response.text, "html.parser")
+
+        # raw vs rendered content check
+        # raw = the HTML we already fetched above (no JavaScript), rendered = what a real browser sees
+        audit_results["ai_readiness"]["raw_vs_rendered"] = {
+            "raw_words": None,
+            "rendered_words": None,
+            "ratio": None,
+            "status": None,  
+        }
+ 
+        try:
+            raw_words = count_visible_words(response.text)
+            audit_results["ai_readiness"]["raw_vs_rendered"]["raw_words"] = raw_words
+ 
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                context = await browser.new_context(user_agent=BROWSER_UA)
+                page = await context.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                try:
+                    # many sites poll forever, so don't fail if this times out
+                    await page.wait_for_load_state("networkidle", timeout=8000)
+                except PlaywrightTimeout:
+                    pass
+                rendered_html = await page.content()
+                await browser.close()
+ 
+            rendered_words = count_visible_words(rendered_html)
+            audit_results["ai_readiness"]["raw_vs_rendered"]["rendered_words"] = rendered_words
+ 
+            if rendered_words < MIN_WORDS:
+                audit_results["ai_readiness"]["raw_vs_rendered"]["status"] = "insufficient_content"
+            else:
+                ratio = min(raw_words / rendered_words, 1.0)  # capped at 1, raw can exceed rendered
+                audit_results["ai_readiness"]["raw_vs_rendered"]["ratio"] = round(ratio, 2)
+ 
+                if ratio >= PASS_RATIO:
+                    audit_results["ai_readiness"]["raw_vs_rendered"]["status"] = "pass"
+                elif ratio >= PARTIAL_RATIO:
+                    audit_results["ai_readiness"]["raw_vs_rendered"]["status"] = "partial"
+                else:
+                    audit_results["ai_readiness"]["raw_vs_rendered"]["status"] = "fail"
+        except Exception:
+            audit_results["ai_readiness"]["raw_vs_rendered"]["status"] = "error"
+        # ------------------------------------------------------------- #
 
         # schema check
         script_tags = soup.find_all("script", attrs={"type": "application/ld+json"})
@@ -168,7 +232,7 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # word count check 
-        word_count = soup.get_text(separator=' ', strip=True)
+        word_count = count_visible_words(response.text)
         words = word_count.split()
         audit_results["seo"]["word_count"] = len(words)
         # ------------------------------------------------------------- #
