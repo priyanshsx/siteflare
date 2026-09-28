@@ -1,8 +1,11 @@
 # importing libraries
 
+import asyncio
+import ipaddress
+import re
+import socket
 import httpx 
 from bs4 import BeautifulSoup
-import re
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
@@ -40,9 +43,34 @@ def count_visible_words(html):
     return len(clean_soup.get_text(" ", strip=True).split())
 # ------------------------------------------------------------- #
 
+# helper: blocks localhost / private / internal addresses (SSRF guard)
+def is_public_host(hostname):
+    try:
+        for info in socket.getaddrinfo(hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+        return True
+    except (socket.gaierror, ValueError):
+        return False
+# ------------------------------------------------------------- #
+
 # defining the main function 
 async def scrape_website(url):
-    async with httpx.AsyncClient() as client:
+
+    # url validation
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    root = urlparse(url)
+    if not root.hostname:
+        return {"error": "Invalid URL."}
+    if not await asyncio.to_thread(is_public_host, root.hostname):
+        return {"error": "This URL can't be audited."}
+    # ------------------------------------------------------------- #
+
+    async with httpx.AsyncClient(headers={"User-Agent": BROWSER_UA}, timeout=15) as client:
 
         # initiliazing the audit_results dictionaries 
         
@@ -50,12 +78,11 @@ async def scrape_website(url):
         audit_results["seo"]["schema_detected"] = False
         audit_results["security"] = {}
         audit_results["performance"] = {}
-        audit_results["tracking"] = {"google_analytics": False, "meta_pixel": False}
+        audit_results["tracking"] = {"google_analytics": False, "meta_analytics": False}
         audit_results["ai_readiness"] = {}
         # ------------------------------------------------------------- #
 
         # ai readiness check
-        root = urlparse(url)
         base = f"{root.scheme}://{root.netloc}"
         audit_results["ai_readiness"] = {"robots_status": None, "bots": {}, "llms_text": False}
 
@@ -67,7 +94,7 @@ async def scrape_website(url):
                 rp.parse(resp.text.splitlines())
                 audit_results["ai_readiness"]["robots_status"] = "found"
             elif resp.status_code in (401, 403):
-                rp.disallow_all = True
+                # we were probably blocked, this does NOT mean bots are blocked, so no bot table
                 audit_results["ai_readiness"]["robots_status"] = "forbidden"
             elif 400 <= resp.status_code < 500:
                 rp.allow_all = True
@@ -77,7 +104,7 @@ async def scrape_website(url):
         except httpx.HTTPError:
             audit_results["ai_readiness"]["robots_status"] = "unreachable"
         
-        if audit_results["ai_readiness"]["robots_status"] in ("found", "forbidden", "missing"):
+        if audit_results["ai_readiness"]["robots_status"] in ("found", "missing"):
             rp.modified()
             for bot, label in AI_BOTS.items():
                 audit_results["ai_readiness"]["bots"][bot] = {
@@ -92,8 +119,11 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # parsing html using beautiful soup
-        response = await client.get(url, follow_redirects=True)
-        soup = BeautifulSoup(response.text, "html.parser")
+        try:
+            response = await client.get(url, follow_redirects=True)
+            soup = BeautifulSoup(response.text, "html.parser")
+        except httpx.HTTPError:
+            return {"error": "Could not reach this website."}
 
         # raw vs rendered content check
         # raw = the HTML we already fetched above (no JavaScript), rendered = what a real browser sees
@@ -101,10 +131,14 @@ async def scrape_website(url):
             "raw_words": None,
             "rendered_words": None,
             "ratio": None,
-            "status": None,  
+            "status": None,  # pass | partial | fail | insufficient_content | error
         }
  
         try:
+            # if the raw fetch returned an error page, the comparison is meaningless
+            if response.status_code >= 400:
+                raise ValueError("raw fetch failed")
+
             raw_words = count_visible_words(response.text)
             audit_results["ai_readiness"]["raw_vs_rendered"]["raw_words"] = raw_words
  
@@ -175,6 +209,7 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # load time check 
+        # NOTE: this is server response time (time to headers), not full page load. Label it that way in the report.
         time_elapsed = response.elapsed.total_seconds()
         audit_results["performance"]["load_time_seconds"] = time_elapsed
         # ------------------------------------------------------------- #
@@ -210,11 +245,12 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # alt text check 
+        # only counts images with NO alt attribute (alt="" is valid for decorative images)
         alt_text = soup.find_all("img")
         total_images = 0
         missing_alt = 0
         for text in alt_text:
-            if not text.get("alt"):
+            if text.get("alt") is None:
                 missing_alt += 1
         
             total_images += 1
@@ -232,9 +268,7 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # word count check 
-        word_count = count_visible_words(response.text)
-        words = word_count.split()
-        audit_results["seo"]["word_count"] = len(words)
+        audit_results["seo"]["word_count"] = count_visible_words(response.text)
         # ------------------------------------------------------------- #
 
         # socials check 
@@ -328,4 +362,5 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
     return audit_results
+
 # ------------------------------------------------------------- #
