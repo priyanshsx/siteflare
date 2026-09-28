@@ -1,20 +1,49 @@
+# importing libraries
+
 import httpx 
 from bs4 import BeautifulSoup
 import re
+from urllib.parse import urlparse
+# ------------------------------------------------------------- #
 
+# defining the main function 
 async def scrape_website(url):
     async with httpx.AsyncClient() as client:
-        
-        # parsing html using beautiful soup
-        response = await client.get(url, follow_redirects=True)
-        soup = BeautifulSoup(response.text, "html.parser")
 
+        # initiliazing the audit_results dictionaries 
+        
         audit_results = {"seo": {}, "socials": {}, "content": {}, "accessibility": {}}
         audit_results["seo"]["schema_detected"] = False
         audit_results["security"] = {}
         audit_results["performance"] = {}
         audit_results["tracking"] = {"google_analytics": False, "meta_pixel": False}
+        audit_results["ai_readiness"] = {}
         # ------------------------------------------------------------- #
+
+        # ai readiness check
+        root_url = urlparse(url)
+        robots_url = f"{root_url.scheme}://{root_url.netloc}/robots.txt"
+
+        robots_response = await client.get(robots_url, follow_redirects=True)
+        if robots_response.status_code == 200:
+            audit_results["ai_readiness"] = {"openai_allowed": True, "anthropic_allowed": True, "common_crawl_allowed": True}
+            bot_footprint = robots_response.text 
+
+            if "GPTBot" in bot_footprint:
+                audit_results["ai_readiness"]["openai_allowed"] = False 
+            if "ChatGPT-User" in bot_footprint:
+                audit_results["ai_readiness"]["openai_allowed"] = False
+            if "anthropic-ai" in bot_footprint:
+                audit_results["ai_readiness"]["anthropic_allowed"] = False
+            if "CCBot" in bot_footprint:
+                audit_results["ai_readiness"]["common_crawl_allowed"] = False
+        else:
+            audit_results["ai_readiness"] = {"openai_allowed": True, "anthropic_allowed": True, "common_crawl_allowed": True}
+        # ------------------------------------------------------------- #
+
+        # parsing html using beautiful soup
+        response = await client.get(url, follow_redirects=True)
+        soup = BeautifulSoup(response.text, "html.parser")
 
         # schema check
         script_tags = soup.find_all("script", attrs={"type": "application/ld+json"})
@@ -204,3 +233,4 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
     return audit_results
+# ------------------------------------------------------------- #
