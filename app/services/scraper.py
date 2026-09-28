@@ -40,7 +40,6 @@ async def scrape_website(url):
             audit_results["tracking"]["meta_analytics"] = True 
         # ------------------------------------------------------------- #
 
-
         # load time check 
         time_elapsed = response.elapsed.total_seconds()
         audit_results["performance"]["load_time_seconds"] = time_elapsed
@@ -119,7 +118,6 @@ async def scrape_website(url):
             if meta_name and meta_name.startswith("twitter:"):
                 meta_twitter = meta.get("content")
                 audit_results["socials"]["twitter"][meta_name] = meta_twitter
-
         # ------------------------------------------------------------- #
 
         # favicon check
@@ -194,6 +192,5 @@ async def scrape_website(url):
         audit_results["accessibility"]["missing_labels"] = missing_labels 
         audit_results["accessibility"]["total_inputs"] = total_inputs    
         # ------------------------------------------------------------- #
-
 
     return audit_results
