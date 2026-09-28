@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, HttpUrl
+from app.services.scraper import scrape_website
 
 # initializing the API router 
 router = APIRouter()
@@ -11,5 +12,7 @@ class AuditRequest(BaseModel):
 # function to catch the request
 @router.post("/audit")
 async def run_audit(request: AuditRequest):
-    return {"message": "Request received.",
-            "url": str(request.target_url)}
+    final_data = await scrape_website(str(request.target_url))
+    
+    return final_data    
+
