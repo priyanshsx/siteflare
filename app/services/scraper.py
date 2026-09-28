@@ -67,8 +67,8 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # socials check 
-        audit_results["socials"]["open_graph"] = 0
-        audit_results["socials"]["twitter"] = 0
+        audit_results["socials"]["open_graph"] = {}
+        audit_results["socials"]["twitter"] = {}
 
         all_meta = soup.find_all("meta")
         for meta in all_meta:
@@ -77,7 +77,38 @@ async def scrape_website(url):
 
         # ------------------------------------------------------------- #
 
-        # favicon check 
-        
+        # favicon check
+        favicon = soup.find("link", attrs={"rel", "icon"})
+
+        if not favicon:
+            favicon = soup.find("link", attrs={"rel": "shortcut_icon"})
+
+            if not favicon:
+                audit_results["socials"]["favicon"] = "None"
+            else:
+                audit_results["socials"]["favicon"] = favicon.get("href")
+        else:
+            audit_results["socials"]["favicon"] = favicon
+        # ------------------------------------------------------------- #
+
+        # social profiles check 
+        audit_results["socials"]["profiles"] = 0 
+        social_profiles = soup.find_all("a", href=True)
+
+        for profile in social_profiles:
+            link_variable = profile.get("href")
+
+            if "linkedin.com" in link_variable:
+                audit_results["socials"]["linkedin"] = link_variable 
+            elif "facebook.com" in link_variable:
+                audit_results["socials"]["facebook"] = link_variable 
+            elif "instagram.com" in link_variable:
+                audit_results["socials"]["instagram"] = link_variable 
+            elif "tiktok" in link_variable:
+                audit_results["socials"]["tiktok"] = link_variable 
+        # ------------------------------------------------------------- #
+
+
+
 
     return audit_results
