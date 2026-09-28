@@ -72,13 +72,20 @@ async def scrape_website(url):
 
         all_meta = soup.find_all("meta")
         for meta in all_meta:
-            if meta.tag("og:", attr=property):
-                audit_results["socials"][""]
+            meta_property = meta.get("property")
+            if meta_property and meta_property.startswith("og:"):
+                content_variable = meta.get("content")
+                audit_results["socials"]["open_graph"][meta_property] = content_variable
+
+            meta_name = meta.get("name")
+            if meta_name and meta_name.startswith("twitter:"):
+                meta_twitter = meta.get("content")
+                audit_results["socials"]["twitter"][meta_name] = meta_twitter
 
         # ------------------------------------------------------------- #
 
         # favicon check
-        favicon = soup.find("link", attrs={"rel", "icon"})
+        favicon = soup.find("link", attrs={"rel": "icon"})
 
         if not favicon:
             favicon = soup.find("link", attrs={"rel": "shortcut_icon"})
@@ -88,11 +95,10 @@ async def scrape_website(url):
             else:
                 audit_results["socials"]["favicon"] = favicon.get("href")
         else:
-            audit_results["socials"]["favicon"] = favicon
+            audit_results["socials"]["favicon"] = favicon.get("href")
         # ------------------------------------------------------------- #
 
-        # social profiles check 
-        audit_results["socials"]["profiles"] = 0 
+        # social profiles check  
         social_profiles = soup.find_all("a", href=True)
 
         for profile in social_profiles:
