@@ -11,6 +11,8 @@ async def scrape_website(url):
 
         audit_results = {"seo": {}, "socials": {}, "content": {}, "accessibility": {}}
         audit_results["security"] = {}
+        audit_results["performance"] = {}
+        audit_results["tracking"] = {"google_analytics": False, "meta_pixel": False}
         # ------------------------------------------------------------- #
 
         # security check 
@@ -21,6 +23,27 @@ async def scrape_website(url):
                 audit_results["security"][item] = True 
             else:
                 audit_results["security"][item] = False
+        # ------------------------------------------------------------- #
+
+        # analytics check
+        google_analytics = re.search(r"GTM-[A-Z0-9]+|G-[A-Z0-9]+", response.text)
+        meta_analytics = re.search(r"fbevents\.js", response.text)
+
+        if not google_analytics:
+            audit_results["tracking"]["google_analytics"] = False 
+        else:
+            audit_results["tracking"]["google_analytics"] = True 
+
+        if not meta_analytics:
+            audit_results["tracking"]["meta_analytics"] = False 
+        else:
+            audit_results["tracking"]["meta_analytics"] = True 
+        # ------------------------------------------------------------- #
+
+
+        # load time check 
+        time_elapsed = response.elapsed.total_seconds()
+        audit_results["performance"]["load_time_seconds"] = time_elapsed
         # ------------------------------------------------------------- #
 
         # title check 
