@@ -1,5 +1,6 @@
 import httpx 
 from bs4 import BeautifulSoup
+import re
 
 async def scrape_website(url):
     async with httpx.AsyncClient() as client:
@@ -113,8 +114,29 @@ async def scrape_website(url):
             elif "tiktok" in link_variable:
                 audit_results["socials"]["tiktok"] = link_variable 
         # ------------------------------------------------------------- #
+        
+        # footer check
+        footer_tag = soup.find("footer")
+        if not footer_tag:
+            footer_tag = soup.find("div", attrs={"class": "footer"})
+        if not footer_tag:
+            footer_tag = soup.find("div", attrs={"id": "footer"})
+        if not footer_tag:
+            audit_results["content"]["copyright_year"] = "None"
+        else:
+            footer_tag = footer_tag.get_text(separator=" ", strip=True)
+            year_match = re.search(r"20\d{2}", footer_tag)
 
+            if not year_match:
+                audit_results["content"]["copyright_year"] = "None"
+            else:
+                audit_results["content"]["copyright_year"] = year_match.group(0)
+        # ------------------------------------------------------------- #
 
+        # accessibility check 
+        
+
+        # ------------------------------------------------------------- #
 
 
     return audit_results
