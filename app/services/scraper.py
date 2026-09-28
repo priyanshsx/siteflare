@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 
 async def scrape_website(url):
     async with httpx.AsyncClient() as client:
-        response = await client.get(url)
+        response = await client.get(url, follow_redirects=True)
         soup = BeautifulSoup(response.text, "html.parser")
 
         audit_results = {"seo": {}, "socials": {}, "content": {}, "accessibility": {}}
