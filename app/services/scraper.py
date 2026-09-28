@@ -4,10 +4,24 @@ import re
 
 async def scrape_website(url):
     async with httpx.AsyncClient() as client:
+        
+        # parsing html using beautiful soup
         response = await client.get(url, follow_redirects=True)
         soup = BeautifulSoup(response.text, "html.parser")
 
         audit_results = {"seo": {}, "socials": {}, "content": {}, "accessibility": {}}
+        audit_results["security"] = {}
+        # ------------------------------------------------------------- #
+
+        # security check 
+        security_headers = ["strict-transport-security", "x-frame-options", "x-content-type-options"]
+
+        for item in security_headers:
+            if item in response.headers:
+                audit_results["security"][item] = True 
+            else:
+                audit_results["security"][item] = False
+        # ------------------------------------------------------------- #
 
         # title check 
         if not soup.title:
