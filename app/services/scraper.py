@@ -4,6 +4,21 @@ import httpx
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
+from urllib.robotparser import RobotFileParser
+# ------------------------------------------------------------- #
+
+# AI bots 
+AI_BOTS = {
+    "GPTBot": "OpenAI (training)",
+    "OAI-SearchBot": "OpenAI (search)",
+    "ChatGPT-User": "OpenAI (live browsing)",
+    "ClaudeBot": "Anthropic (training)",
+    "Claude-User": "Anthropic (live browsing)",
+    "PerplexityBot": "Perplexity",
+    "Google-Extended": "Google (Gemini training)",
+    "Applebot-Extended": "Apple (AI training)",
+    "CCBot": "Common Crawl",
+}
 # ------------------------------------------------------------- #
 
 # defining the main function 
@@ -21,24 +36,40 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # ai readiness check
-        root_url = urlparse(url)
-        robots_url = f"{root_url.scheme}://{root_url.netloc}/robots.txt"
+        root = urlparse(url)
+        base = f"{root.scheme}://{root.netloc}"
+        audit_results["ai_readiness"] = {"robots_status": None, "bots": {}, "llms_text": False}
 
-        robots_response = await client.get(robots_url, follow_redirects=True)
-        if robots_response.status_code == 200:
-            audit_results["ai_readiness"] = {"openai_allowed": True, "anthropic_allowed": True, "common_crawl_allowed": True}
-            bot_footprint = robots_response.text 
+        rp = RobotFileParser()
 
-            if "GPTBot" in bot_footprint:
-                audit_results["ai_readiness"]["openai_allowed"] = False 
-            if "ChatGPT-User" in bot_footprint:
-                audit_results["ai_readiness"]["openai_allowed"] = False
-            if "anthropic-ai" in bot_footprint:
-                audit_results["ai_readiness"]["anthropic_allowed"] = False
-            if "CCBot" in bot_footprint:
-                audit_results["ai_readiness"]["common_crawl_allowed"] = False
-        else:
-            audit_results["ai_readiness"] = {"openai_allowed": True, "anthropic_allowed": True, "common_crawl_allowed": True}
+        try:
+            resp = await client.get(f"{base}/robots.txt", follow_redirects=True, timeout=10)
+            if resp.status_code == 200:
+                rp.parse(resp.text.splitlines())
+                audit_results["ai_readiness"]["robots_status"] = "found"
+            elif resp.status_code in (401, 403):
+                rp.disallow_all = True
+                audit_results["ai_readiness"]["robots_status"] = "forbidden"
+            elif 400 <= resp.status_code < 500:
+                rp.allow_all = True
+                audit_results["ai_readiness"]["robots_status"] = "missing"
+            else:
+                audit_results["ai_readiness"]["robots_status"] = "server_error"
+        except httpx.HTTPError:
+            audit_results["ai_readiness"]["robots_status"] = "unreachable"
+        
+        if audit_results["ai_readiness"]["robots_status"] in ("found", "forbidden", "missing"):
+            rp.modified()
+            for bot, label in AI_BOTS.items():
+                audit_results["ai_readiness"]["bots"][bot] = {
+                    "label": label,
+                    "allowed": rp.can_fetch(bot, f"{base}/")
+                }
+        try: 
+            r = await client.get(f"{base}/llms.txt", follow_redirects=True, timeout=10)
+            audit_results["ai_readiness"]["llms_text"] = r.status_code == 200 and "html" not in r.headers.get("content-type", "")
+        except httpx.HTTPError:
+            pass
         # ------------------------------------------------------------- #
 
         # parsing html using beautiful soup
