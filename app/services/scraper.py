@@ -362,5 +362,15 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
     return audit_results
-
 # ------------------------------------------------------------- #
+
+# generating the scorecard 
+
+def generate_scorecard(audit_results)
+    
+    # initializing import variables
+    total_score = 0
+    action_items = []
+    # ------------------------------------------------------------- #
+    
+
