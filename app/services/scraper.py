@@ -8,17 +8,76 @@ async def scrape_website(url):
 
         audit_results = {"seo": {}, "socials": {}, "content": {}, "accessibility": {}}
 
-        # searching for title 
+        # title check 
         if not soup.title:
             audit_results["seo"]["title"] = "None"
         else:
             audit_results["seo"]["title"] = soup.title.text
+        # ------------------------------------------------------------- #
 
-        # searching for meta description 
+        # meta description check 
         meta_desc_tag = soup.find("meta", attrs={"name": "description"})
         if not meta_desc_tag:
             audit_results["seo"]["meta_desc"] = "None"
         else:
             audit_results["seo"]["meta_desc"] = meta_desc_tag.get("content")
+        # ------------------------------------------------------------- #
+
+        # headings check 
+        headings = soup.find_all(['h1', 'h2', 'h3'])
+        audit_results["seo"]["h1_count"] = 0
+        audit_results["seo"]["h2_count"] = 0
+        audit_results["seo"]["h3_count"] = 0
+
+        for heading in headings:
+            if heading.name == 'h1':
+                audit_results["seo"]["h1_count"] += 1
+            elif heading.name == 'h2':
+                audit_results["seo"]["h2_count"] += 1
+            elif heading.name == 'h3':
+                audit_results["seo"]["h3_count"] += 1
+        # ------------------------------------------------------------- #
+
+        # alt text check 
+        alt_text = soup.find_all("img")
+        total_images = 0
+        missing_alt = 0
+        for text in alt_text:
+            if not text.get("alt"):
+                missing_alt += 1
+        
+            total_images += 1
+        
+        audit_results["seo"]["alt_text"] = missing_alt 
+        audit_results["seo"]["images"] = total_images
+        # ------------------------------------------------------------- #
+
+        # canonical tag check 
+        tag = soup.find("link", attrs={"rel": "canonical"})
+        if not tag:
+            audit_results["seo"]["canonical_tag"] = "None"
+        else:
+            audit_results["seo"]["canonical_tag"] = tag.get("href")
+        # ------------------------------------------------------------- #
+
+        # word count check 
+        word_count = soup.get_text(separator=' ', strip=True)
+        words = word_count.split()
+        audit_results["seo"]["word_count"] = len(words)
+        # ------------------------------------------------------------- #
+
+        # socials check 
+        audit_results["socials"]["open_graph"] = 0
+        audit_results["socials"]["twitter"] = 0
+
+        all_meta = soup.find_all("meta")
+        for meta in all_meta:
+            if meta.tag("og:", attr=property):
+                audit_results["socials"][""]
+
+        # ------------------------------------------------------------- #
+
+        # favicon check 
+        
 
     return audit_results
