@@ -2,14 +2,69 @@
 
 import { useState } from "react";
 
+const categoryDescriptions: Record<string, string> = {
+  average_rating: "Measures overall customer satisfaction from your Google reviews.",
+  total_reviews: "Evaluates the volume of reviews to indicate business velocity.",
+  profile_completeness: "Checks if core business categories and details are filled out.",
+  ai_readiness: "Evaluates how easily AI bots can crawl and index your content.",
+  seo: "Checks that ensure your page follows basic search engine advice.",
+  performance: "Audits that impact the loading speed of your site.",
+  content_social: "Analyzes social tags and brand authority indicators.",
+  accessibility: "Opportunities to improve accessibility for all visitors.",
+  security_tracking: "Ensures standard tracking pixels and secure headers are present."
+};
+
+const categoryMaxPoints: Record<string, number> = {
+  average_rating: 40,
+  total_reviews: 40,
+  profile_completeness: 20,
+  ai_readiness: 15,
+  seo: 22,
+  performance: 15,
+  content_social: 15,
+  accessibility: 10,
+  security_tracking: 3
+};
+
+const getScoreColor = (percentage: number) => {
+  if (percentage >= 90) return "text-emerald-500";
+  if (percentage >= 50) return "text-amber-500"; 
+  return "text-red-500";
+};
+
+const CircularScore = ({ score, maxScore }: { score: number, maxScore: number }) => {
+  const percentage = Math.min((score / maxScore) * 100, 100);
+  const radius = 24;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percentage / 100) * circumference;
+  const colorClass = getScoreColor(percentage);
+
+  return (
+    <div className="relative inline-flex items-center justify-center w-16 h-16 shrink-0">
+      <svg className="w-16 h-16 transform -rotate-90">
+        <circle className="text-gray-100" strokeWidth="4" stroke="currentColor" fill="transparent" r={radius} cx="32" cy="32" />
+        <circle 
+          className={`transition-all duration-1000 ${colorClass}`} 
+          strokeWidth="4" 
+          strokeDasharray={circumference} 
+          strokeDashoffset={offset} 
+          strokeLinecap="round" 
+          stroke="currentColor" 
+          fill="transparent" 
+          r={radius} 
+          cx="32" 
+          cy="32" 
+        />
+      </svg>
+      <span className="absolute text-lg font-bold text-gray-800">{score}</span>
+    </div>
+  );
+};
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"website" | "local">("website");
-  
-  // Input States
   const [url, setUrl] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-
-  // UI States
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [error, setError] = useState("");
@@ -22,12 +77,8 @@ export default function Home() {
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-      
       const endpoint = activeTab === "website" ? "/api/audit" : "/api/local";
-      
-      const payload = activeTab === "website" 
-        ? { url } 
-        : { query: searchQuery };
+      const payload = activeTab === "website" ? { url } : { query: searchQuery };
 
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
@@ -38,7 +89,12 @@ export default function Home() {
       if (!response.ok) throw new Error("Failed to fetch audit data");
       
       const data = await response.json();
-      if (data.error) throw new Error(data.error);
+      if (data.error) {
+        if (data.require_signup) {
+            throw new Error(data.error);
+        }
+        throw new Error(data.error);
+      }
 
       setReport(data.scorecard);
     } catch (err: any) {
@@ -50,10 +106,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
+      {/* Update font-sans to font-gilroy in your tailwind config if you load the custom font */}
       <div className="max-w-5xl mx-auto space-y-10">
         
         <div className="text-center space-y-4">
-          <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900">ShopScore</h1>
+          <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900" style={{ fontFamily: 'Gilroy, sans-serif' }}>ShopScore</h1>
           <p className="text-lg text-gray-600">The unified digital storefront and local visibility auditor.</p>
         </div>
 
@@ -62,13 +119,13 @@ export default function Home() {
             onClick={() => { setActiveTab("website"); setReport(null); setError(""); }}
             className={`flex-1 py-3 rounded-lg font-bold transition-colors ${activeTab === "website" ? "bg-indigo-50 text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
           >
-            Website Audit
+            SiteFlare Audit
           </button>
           <button 
             onClick={() => { setActiveTab("local"); setReport(null); setError(""); }}
             className={`flex-1 py-3 rounded-lg font-bold transition-colors ${activeTab === "local" ? "bg-indigo-50 text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
           >
-            Local SEO Audit
+            LocalScore Audit
           </button>
         </div>
 
@@ -141,24 +198,30 @@ export default function Home() {
               </div>
               <div className="flex flex-col items-start md:items-end justify-center">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-6xl font-black text-indigo-600">{report.total_score}</span>
+                  <span className={`text-6xl font-black ${getScoreColor(report.total_score)}`}>{report.total_score}</span>
                   <span className="text-3xl font-bold text-gray-300">/ 100</span>
                 </div>
                 <span className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Overall Score</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(report.category_scores).map(([key, score]: any) => {
-                let displayLabel = key.replace(/_/g, " ");
+                const displayLabel = key.replace(/_/g, " ");
+                const description = categoryDescriptions[key] || "Metric evaluated by our auditing engine.";
+                const maxScore = categoryMaxPoints[key] || 100;
+                
                 return (
-                  <div key={key} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <p className="text-sm text-gray-500 uppercase tracking-wider font-semibold mb-2">
-                      {displayLabel}
-                    </p>
-                    <p className="text-3xl font-bold text-gray-900">
-                      {score} <span className="text-lg text-gray-400 font-normal">pts</span>
-                    </p>
+                  <div key={key} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5 hover:shadow-md transition-shadow">
+                    <CircularScore score={score} maxScore={maxScore} />
+                    <div className="flex flex-col">
+                      <h4 className="text-lg font-bold text-gray-900 capitalize tracking-tight">
+                        {displayLabel}
+                      </h4>
+                      <p className="text-sm text-gray-500 leading-snug mt-0.5">
+                        {description}
+                      </p>
+                    </div>
                   </div>
                 );
               })}
