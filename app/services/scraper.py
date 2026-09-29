@@ -611,17 +611,24 @@ async def audit_local(business_name, location):
 
     # use httpx to make a POST request to Google Places 
     async with httpx.AsyncClient(headers={"User-Agent": BROWSER_UA}, timeout=15) as client:
+        
+        # defining the payload and api_headers for the call and storing the response
         query = f"{business_name},{location}"
         payload = {"textQuery": query}
-        
+
         api_headers={"X-Goog-Api-Key": API_KEY, "X-Goog-FieldMask": 'places.rating,places.userRatingCount,places.primaryType'}
 
         response = await client.post('https://places.googleapis.com/v1/places:searchText',
                           json=payload, headers=api_headers)
         readable_response = response.json()
-
     # ------------------------------------------------------------- #
-    return 
+
+    # checking if the response came back empty 
+    places_list = readable_response.get("places")
+    if not places_list:
+        return {"error": "Could not find a Google Business Profile for this search."}
+    else:
+        return(places_list[0]) 
     # ------------------------------------------------------------- #
 
 # local scorecard function
