@@ -9,6 +9,24 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+# ------------------------------------------------------------- #
+
+# initializing the fastapi app 
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Next.js default port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class URLRequest(BaseModel):
+    url: str
 # ------------------------------------------------------------- #
 
 # AI bots 
@@ -424,7 +442,7 @@ def generate_scorecard(audit_results):
     else:
         action_items.append("Suggest creating an /llms.text file to guide AI crawlers to your key documentation.")
 
-    ai_net_score = ai_bots_score + ai_content_score + ai_llms_score
+    ai_net_score = round((ai_bots_score + ai_content_score + ai_llms_score), 2)
 
     category_scores["ai_readiness"] = ai_net_score
     total_score += ai_net_score
@@ -583,9 +601,23 @@ def generate_scorecard(audit_results):
     return final_scorecard
 # ------------------------------------------------------------- #
 
-
-
-
-
-
+# api endpoint 
+@app.post("/api/audit")
+async def run_audit(request: URLRequest):
+    # 1. Run the massive scraping engine
+    raw_results = await scrape_website(request.url)
+    
+    # 2. Check if the scraper caught an invalid URL or SSRF attempt
+    if "error" in raw_results:
+        return {"error": raw_results["error"]}
+        
+    # 3. Pass the raw data into the grading engine
+    final_scorecard = generate_scorecard(raw_results)
+    
+    # 4. Return the beautifully formatted data to the React UI
+    return {
+        "scorecard": final_scorecard,
+        "raw_metrics": raw_results 
+    }
+# ------------------------------------------------------------- #
 
