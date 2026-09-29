@@ -16,7 +16,7 @@ from fastapi import Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from slowapi import Limiter
-from slowapi import get_remote_address
+from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
 import asyncpg 
