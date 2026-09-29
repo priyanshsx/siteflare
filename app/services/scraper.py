@@ -12,8 +12,13 @@ from urllib.robotparser import RobotFileParser
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from slowapi import Limiter
+from slowapi import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 API_KEY = os.environ.get('GOOGLE_API_KEY')
@@ -21,6 +26,17 @@ API_KEY = os.environ.get('GOOGLE_API_KEY')
 
 # initializing the fastapi app 
 app = FastAPI()
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+# Custom Exception Handler to return a clean JSON error on HTTP 429
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too many requests. Please wait a minute before running another audit."}
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -685,9 +701,10 @@ def generate_local_scorecard(place_data):
 
 # api endpoint 
 @app.post("/api/audit")
-async def run_audit(request: URLRequest):
+@limiter.limit("5/minute")
+async def run_audit(request: Request, body: URLRequest):
     # 1. Run the massive scraping engine
-    raw_results = await scrape_website(request.url)
+    raw_results = await scrape_website(body.url)
     
     # 2. Check if the scraper caught an invalid URL or SSRF attempt
     if "error" in raw_results:
@@ -696,10 +713,10 @@ async def run_audit(request: URLRequest):
     # 3. Pass the raw data into the grading engine
     final_scorecard = generate_scorecard(raw_results)
     
-    # 4. Return the beautifully formatted data to the React UI
+    # 4. Return the formatted data to the React UI
     return {
         "scorecard": final_scorecard,
-        "raw_metrics": raw_results 
+        "raw_metrics": raw_results
     }
 # ------------------------------------------------------------- #
 
@@ -708,15 +725,20 @@ class LocalRequest(BaseModel):
     query: str
 
 @app.post("/api/local")
-async def run_local_audit(request: LocalRequest):
+@limiter.limit("5/minute")
+async def run_local_audit(request: Request, body: LocalRequest):
     try:
-        raw_data = await audit_local(request.query)
+        # 1. Fetch the data using your Google Places function
+        raw_data = await audit_local(body.query)
         
+        # Catch the error if the business wasn't found
         if "error" in raw_data:
             return {"error": raw_data["error"]}
             
+        # 2. Run the grading engine
         scorecard = generate_local_scorecard(raw_data)
         
+        # 3. Return the unified payload to the React dashboard
         return {"scorecard": scorecard}
         
     except Exception as e:
