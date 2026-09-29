@@ -705,3 +705,27 @@ async def run_audit(request: URLRequest):
     }
 # ------------------------------------------------------------- #
 
+# api endpoint for local score
+class LocalRequest(BaseModel):
+    business_name: str
+    location: str
+
+@app.post("/api/local")
+async def run_local_audit(request: LocalRequest):
+    try:
+        # 1. Fetch the data using your new Google Places function
+        raw_data = await audit_local(request.business_name, request.location)
+        
+        # Catch the error if the business wasn't found
+        if "error" in raw_data:
+            return {"error": raw_data["error"]}
+            
+        # 2. Run the grading engine
+        scorecard = generate_local_scorecard(raw_data)
+        
+        # 3. Return the unified payload to the React dashboard
+        return {"scorecard": scorecard}
+        
+    except Exception as e:
+        return {"error": f"An unexpected error occurred during the local audit: {str(e)}"}
+# ------------------------------------------------------------- #
