@@ -601,6 +601,33 @@ def generate_scorecard(audit_results):
     return final_scorecard
 # ------------------------------------------------------------- #
 
+# nearscore local business function 
+
+def audit_local(business_name, location):
+
+    # use httpx to make a POST request to Google Places 
+
+
+    # ------------------------------------------------------------- #
+
+    # a field mask to only pull exactly what we need 
+    # fields: rating, userRatingCount, reviews, regularOpeningHours, primaryType 
+     
+    # ------------------------------------------------------------- #
+
+    # return 
+    return 
+    # ------------------------------------------------------------- #
+
+# local scorecard function
+def generate_local_scorecard(audit_local):
+
+
+    return 
+
+# ------------------------------------------------------------- #
+
+
 # api endpoint 
 @app.post("/api/audit")
 async def run_audit(request: URLRequest):
