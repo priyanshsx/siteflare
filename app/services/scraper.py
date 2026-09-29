@@ -1,5 +1,6 @@
 # importing libraries
 
+import os
 import asyncio
 import ipaddress
 import re
@@ -12,6 +13,9 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+API_KEY = os.environ.get('GOOGLE_API_KEY')
 # ------------------------------------------------------------- #
 
 # initializing the fastapi app 
@@ -603,19 +607,20 @@ def generate_scorecard(audit_results):
 
 # nearscore local business function 
 
-def audit_local(business_name, location):
+async def audit_local(business_name, location):
 
     # use httpx to make a POST request to Google Places 
+    async with httpx.AsyncClient(headers={"User-Agent": BROWSER_UA}, timeout=15) as client:
+        query = f"{business_name},{location}"
+        payload = {"textQuery": query}
+        
+        api_headers={"X-Goog-Api-Key": API_KEY, "X-Goog-FieldMask": 'places.rating,places.userRatingCount,places.primaryType'}
 
+        response = await client.post('https://places.googleapis.com/v1/places:searchText',
+                          json=payload, headers=api_headers)
+        readable_response = response.json()
 
     # ------------------------------------------------------------- #
-
-    # a field mask to only pull exactly what we need 
-    # fields: rating, userRatingCount, reviews, regularOpeningHours, primaryType 
-     
-    # ------------------------------------------------------------- #
-
-    # return 
     return 
     # ------------------------------------------------------------- #
 
