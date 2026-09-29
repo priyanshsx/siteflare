@@ -42,12 +42,37 @@ app = FastAPI()
 @app.on_event("startup")
 async def init_db():
     connection = await asyncpg.connect(f"postgresql://{db_username}:{db_password}@localhost:5432/{db_name}")
+    # ------------------------------------------------------------- #
+
+    # anonymous_limits table
     await connection.execute("""
         CREATE TABLE IF NOT EXISTS anonymous_limits 
         (ip_address VARCHAR PRIMARY KEY, scan_count INTEGER DEFAULT 1, 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
     """)
+    # ------------------------------------------------------------- #
+
+    # users table
+    await connection.execute("""
+        CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email VARCHAR UNIQUE,
+        password_hash VARCHAR, scans_remaining INTEGER DEFAULT 5, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+    """)
+    # ------------------------------------------------------------- #
+
+    # audit_logs table 
+
+    await connection.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id),
+        tool_used VARCHAR, target_query VARCHAR, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # ------------------------------------------------------------- #
+
+    # closing connection 
     await connection.close()
+    # ------------------------------------------------------------- #
+
+
 # ------------------------------------------------------------- #
 
 # introducing the limiter 
