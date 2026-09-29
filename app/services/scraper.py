@@ -580,6 +580,7 @@ def generate_scorecard(audit_results):
     }
 
     return final_scorecard
+# ------------------------------------------------------------- #
 
 
 
