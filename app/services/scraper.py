@@ -19,14 +19,38 @@ from slowapi import Limiter
 from slowapi import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
+import asyncpg 
+# ------------------------------------------------------------- #
 
+# loading the API KEY
 load_dotenv()
 API_KEY = os.environ.get('GOOGLE_API_KEY')
 # ------------------------------------------------------------- #
 
+# loading the db credentials
+load_dotenv()
+db_username = os.getenv('DB_USER')
+db_password = os.getenv('DB_PASSWORD')
+db_name = os.getenv('DB_NAME')
+# ------------------------------------------------------------- #
+
 # initializing the fastapi app 
 app = FastAPI()
+# ------------------------------------------------------------- #
 
+# initializing the user_scan db
+@app.on_event("startup")
+async def init_db():
+    connection = await asyncpg.connect(f"postgresql://{db_username}:{db_password}@localhost:5432/{db_name}")
+    await connection.execute("""
+        CREATE TABLE IF NOT EXISTS anonymous_limits 
+        (ip_address VARCHAR PRIMARY KEY, scan_count INTEGER DEFAULT 1, 
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+    """)
+    await connection.close()
+# ------------------------------------------------------------- #
+
+# introducing the limiter 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
@@ -723,6 +747,7 @@ async def run_audit(request: Request, body: URLRequest):
 # api endpoint for local score
 class LocalRequest(BaseModel):
     query: str
+    visitor_hash: str 
 
 @app.post("/api/local")
 @limiter.limit("5/minute")
@@ -744,3 +769,4 @@ async def run_local_audit(request: Request, body: LocalRequest):
     except Exception as e:
         return {"error": f"An unexpected error occurred during the local audit: {str(e)}"}
 # ------------------------------------------------------------- #
+
