@@ -131,7 +131,7 @@ async def scrape_website(url):
             "raw_words": None,
             "rendered_words": None,
             "ratio": None,
-            "status": None,  # pass | partial | fail | insufficient_content | error
+            "status": None,  
         }
  
         try:
@@ -209,7 +209,7 @@ async def scrape_website(url):
         # ------------------------------------------------------------- #
 
         # load time check 
-        # NOTE: this is server response time (time to headers), not full page load. Label it that way in the report.
+        # this is server response time (time to headers), not full page load
         time_elapsed = response.elapsed.total_seconds()
         audit_results["performance"]["load_time_seconds"] = time_elapsed
         # ------------------------------------------------------------- #
@@ -366,11 +366,224 @@ async def scrape_website(url):
 
 # generating the scorecard 
 
-def generate_scorecard(audit_results)
+def generate_scorecard(audit_results):
     
-    # initializing import variables
+    # initializing variables
     total_score = 0
+    category_scores = {}
     action_items = []
     # ------------------------------------------------------------- #
     
+    # initializing the score variables 
+    # ai readiness scores
+
+    ai_bots_score = 0
+    ai_content_score = 0
+    ai_llms_score = 0
+    ai_net_score = 0
+    # ------------------------------------------------------------- #
+    
+    # seo scores 
+    seo_score = 0
+    # ------------------------------------------------------------- #
+
+    # performance score 
+    perf_score = 0
+    # ------------------------------------------------------------- #
+
+    # content score 
+    content_score = 0 
+    # ------------------------------------------------------------- #
+
+    # accessibility score 
+    access_score = 0
+    # ------------------------------------------------------------- #
+
+    # security and tracking score 
+    sec_track_score = 0
+    # ------------------------------------------------------------- #
+
+    # ai readiness score 
+    for bot_name in audit_results["ai_readiness"]["bots"]:
+        if audit_results["ai_readiness"]["bots"][bot_name]["allowed"] is True:
+            ai_bots_score += 1.66
+
+        ai_bots_score = min(15.0, ai_bots_score)
+
+    render_status = audit_results["ai_readiness"]["raw_vs_rendered"]["status"]
+    if render_status == "pass":
+        ai_content_score += 10
+    elif render_status == "partial":
+        ai_content_score += 5
+    else:
+        action_items.append("JavaScript reliance may be blocking AI crawlers.")
+
+    if audit_results["ai_readiness"]["llms_text"] is True:
+        ai_llms_score += 5
+    else:
+        action_items.append("Suggest creating an /llms.text file to guide AI crawlers to your key documentation.")
+
+    ai_net_score = ai_bots_score + ai_content_score + ai_llms_score
+
+    category_scores["ai_readiness"] = ai_net_score
+    total_score += ai_net_score
+    # ------------------------------------------------------------- #
+
+    # seo scores
+    if audit_results["seo"]["title"] != "None":
+        seo_score += 4
+    else:
+        action_items.append("Add a descriptive Title tag to improve search visibility.")
+
+    if audit_results["seo"]["meta_desc"] != "None":
+        seo_score += 4
+    else:
+        action_items.append("Add a Meta Description to improve click-through rates from search engines.")
+
+    if audit_results["seo"]["h1_count"] == 1:
+        seo_score += 4
+    else:
+        action_items.append("Ensure your page has exactly one H1 tag to establish the main topic.")
+
+    total_images = audit_results["seo"]["images"]
+    if total_images == 0:
+        seo_score += 4
+    else:
+        missing_alt = audit_results["seo"]["alt_text"]
+        seo_score += ((total_images - missing_alt) / total_images) * 4
+        if missing_alt > 0:
+            action_items.append(f"Add descriptive alt text to the {missing_alt} image(s) missing it for accessibility and SEO.")
+
+    if audit_results["seo"]["canonical_tag"] != "None":
+        seo_score += 3
+    else:
+        action_items.append("Add a canonical tag to prevent duplicate content issues.")
+
+    if audit_results["seo"]["schema_detected"] is True:
+        seo_score += 3
+    else:
+        action_items.append("Implement JSON-LD structured data to qualify for rich search snippets.")
+
+    if audit_results["seo"]["word_count"] > 300:
+        seo_score += 3
+    else:
+        action_items.append("Increase word count above 300 words to provide more topical depth for search engines.")
+
+    category_scores["seo"] = round(seo_score, 2)
+    total_score += seo_score
+    # ------------------------------------------------------------- #
+
+    # performance score 
+    load_time = audit_results["performance"]["load_time_seconds"]
+
+    if load_time < 1.0:
+        perf_score += 15
+    elif load_time <= 2.5:
+        perf_score += 10
+        action_items.append("Load time is acceptable but could be improved (between 1-2.5s).")
+    else:
+        action_items.append(f"Critical: Page load time is {round(load_time, 2)}s (over 2.5s). Optimize images and defer scripts.")
+
+    category_scores["performance"] = perf_score
+    total_score += perf_score
+    # ------------------------------------------------------------- #
+
+    # content score 
+    content_score = 0
+
+    if len(audit_results["socials"]["open_graph"]) > 0 or len(audit_results["socials"]["twitter"]) > 0:
+        content_score += 5
+    else:
+        action_items.append("Add Open Graph or Twitter Card tags so your links look appealing when shared on social media.")
+
+    social_links_found = 0
+    for platform in ["linkedin", "facebook", "instagram", "tiktok"]:
+        if platform in audit_results["socials"]:
+            social_links_found += 1
+    
+    # Cap at 4 points maximum
+    content_score += min(4, social_links_found)
+    if social_links_found == 0:
+        action_items.append("No social media profiles detected. Link your social accounts to build brand authority.")
+
+    if audit_results["socials"]["favicon"] != "None":
+        content_score += 3
+    else:
+        action_items.append("Add a favicon to improve brand recognition in browser tabs.")
+
+    # Checking against current year (2026)
+    if audit_results["content"]["copyright_year"] == "2026":
+        content_score += 3
+    else:
+        action_items.append("Update your footer copyright year to 2026 to signal that the business is active.")
+
+    category_scores["content_social"] = content_score
+    total_score += content_score
+    # ------------------------------------------------------------- #
+
+    # accessibility score 
+    total_inputs = audit_results["accessibility"]["total_inputs"]
+    missing_labels = audit_results["accessibility"]["missing_labels"]
+
+    if total_inputs == 0:
+        access_score += 10
+    else:
+        access_score += ((total_inputs - missing_labels) / total_inputs) * 10
+        if missing_labels > 0:
+            action_items.append("Add explicit <label> tags or aria-label attributes to all form inputs for screen readers.")
+
+    category_scores["accessibility"] = round(access_score, 2)
+    total_score += access_score
+    # ------------------------------------------------------------- #
+
+    # security tracking score 
+    for header in ["strict-transport-security", "x-frame-options", "x-content-type-options"]:
+        if audit_results["security"].get(header) is True:
+            sec_track_score += 1
+        else:
+            action_items.append(f"Missing security header: {header}. Add this to protect your visitors.")
+
+    if audit_results["tracking"].get("google_analytics") is True:
+        sec_track_score += 1
+    else:
+        action_items.append("No Google Analytics detected. Install analytics to track your marketing efforts.")
+
+    if audit_results["tracking"].get("meta_analytics") is True:
+        sec_track_score += 1
+    else:
+        action_items.append("No Meta (Facebook) Pixel detected. Consider adding one for retargeting campaigns.")
+
+    category_scores["security_tracking"] = sec_track_score
+    total_score += sec_track_score
+    # ------------------------------------------------------------- #
+
+    # final grade calculation 
+    total_score = round(min(100.0, total_score), 2)
+    
+    if total_score >= 90:
+        letter_grade = "A"
+    elif total_score >= 80:
+        letter_grade = "B"
+    elif total_score >= 70:
+        letter_grade = "C"
+    elif total_score >= 60:
+        letter_grade = "D"
+    else:
+        letter_grade = "F"
+
+    # Assemble the final dictionary
+    final_scorecard = {
+        "total_score": total_score,
+        "letter_grade": letter_grade,
+        "category_scores": category_scores,
+        "recommendations": action_items
+    }
+
+    return final_scorecard
+
+
+
+
+
+
 
