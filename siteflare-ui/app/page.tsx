@@ -108,7 +108,7 @@ export default function Home() {
               <strong>How to search:</strong>
               <ol className="list-decimal ml-5 mt-1 space-y-1">
                 <li>Head to Google Maps.</li>
-                <li>Copy the business name as it shows up in English.</li>
+                <li>Copy the business name exactly as it shows up in English.</li>
                 <li>Paste it into the box above along with the city.</li>
               </ol>
             </div>
@@ -123,12 +123,23 @@ export default function Home() {
 
         {report && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-              <div className="space-y-2">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-3">
                 <h2 className="text-3xl font-bold">Audit Complete</h2>
                 <p className="text-gray-500">Here is how this asset stacks up against modern marketing standards.</p>
+                {report.maps_link && (
+                  <a 
+                    href={report.maps_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Verified Google Profile
+                  </a>
+                )}
               </div>
-              <div className="flex flex-col items-end justify-center">
+              <div className="flex flex-col items-start md:items-end justify-center">
                 <div className="flex items-baseline gap-2">
                   <span className="text-6xl font-black text-indigo-600">{report.total_score}</span>
                   <span className="text-3xl font-bold text-gray-300">/ 100</span>

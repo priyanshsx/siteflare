@@ -613,7 +613,7 @@ async def audit_local(query):
         payload = {"textQuery": query}
         api_headers = {
             "X-Goog-Api-Key": API_KEY, 
-            "X-Goog-FieldMask": "places.rating,places.userRatingCount,places.primaryType"
+            "X-Goog-FieldMask": "places.rating,places.userRatingCount,places.primaryType,places.googleMapsUri"
         }
         response = await client.post(
             'https://places.googleapis.com/v1/places:searchText',
@@ -680,7 +680,7 @@ def generate_local_scorecard(place_data):
         net_local_score += 20
         category_scores["profile_completeness"] = 20
 
-    return {"total_score": net_local_score, "category_scores": category_scores, "recommendations": action_items}
+    return {"total_score": net_local_score, "category_scores": category_scores, "recommendations": action_items, "maps_link": place_data.get("googleMapsUri")}
 # ------------------------------------------------------------- #
 
 # api endpoint 
