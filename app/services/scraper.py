@@ -360,7 +360,8 @@ async def scrape_website(url):
         audit_results["accessibility"]["missing_labels"] = missing_labels 
         audit_results["accessibility"]["total_inputs"] = total_inputs    
         # ------------------------------------------------------------- #
-
+    
+    audit_results["scorecard"] = generate_scorecard(audit_results)
     return audit_results
 # ------------------------------------------------------------- #
 
@@ -408,7 +409,7 @@ def generate_scorecard(audit_results):
         if audit_results["ai_readiness"]["bots"][bot_name]["allowed"] is True:
             ai_bots_score += 1.66
 
-        ai_bots_score = min(15.0, ai_bots_score)
+    ai_bots_score = min(15.0, ai_bots_score)
 
     render_status = audit_results["ai_readiness"]["raw_vs_rendered"]["status"]
     if render_status == "pass":
