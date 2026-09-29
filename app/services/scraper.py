@@ -753,17 +753,46 @@ class LocalRequest(BaseModel):
 @limiter.limit("5/minute")
 async def run_local_audit(request: Request, body: LocalRequest):
     try:
-        # 1. Fetch the data using your Google Places function
-        raw_data = await audit_local(body.query)
+        # ------------------------------------------------------------- #
+
+        # verify if the user is eligible (the 2-scan limit per ip)
+        connection = await asyncpg.connect(f"postgresql://{db_username}:{db_password}@localhost:5432/{db_name}")
+        record = await connection.fetchrow("SELECT scan_count FROM anonymous_limits WHERE ip_address = $1", body.visitor_hash)
+        # ------------------------------------------------------------- #
+
+        # block if limit reached 
+        if record and record["scan_count"] >= 2:
+            await connection.close()
+            return {
+                "require_signup": True,
+                "error": "You've reached your 2 free anonmyous audits. Please signup to continue."
+            }
+        # ------------------------------------------------------------- #
         
-        # Catch the error if the business wasn't found
+        # fetch google places data and catch the error if business not found
+        raw_data = await audit_local(body.query)
         if "error" in raw_data:
             return {"error": raw_data["error"]}
-            
-        # 2. Run the grading engine
-        scorecard = generate_local_scorecard(raw_data)
+        # ------------------------------------------------------------- #
         
-        # 3. Return the unified payload to the React dashboard
+        # run the grading engine
+        scorecard = generate_local_scorecard(raw_data)
+        # ------------------------------------------------------------- #
+
+        # log the successful scan 
+        await connection.execute(
+            """
+            INSERT INTO anonymous_limits (ip_address, scan_count)
+            VALUES ($1, 1)
+            ON CONFLICT (ip_address)
+            DO UPDATE SET scan_count = anonymous_limits.scan_count + 1
+            """,
+            body.visitor_hash
+        )
+        # ------------------------------------------------------------- #
+
+        # close connection & return payload
+        await connection.close()
         return {"scorecard": scorecard}
         
     except Exception as e:

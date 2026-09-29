@@ -69,6 +69,20 @@ export default function Home() {
   const [report, setReport] = useState<any>(null);
   const [error, setError] = useState("");
 
+  const generateVisitorHash = async () => {
+    const components = [
+      navigator.userAgent,
+      window.screen.width,
+      window.screen.height,
+      navigator.language,
+    ].join("|");
+    
+    const msgBuffer = new TextEncoder().encode(components);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
   const runAudit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -76,9 +90,13 @@ export default function Home() {
     setReport(null);
 
     try {
+      const visitorHash = await generateVisitorHash();
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
       const endpoint = activeTab === "website" ? "/api/audit" : "/api/local";
-      const payload = activeTab === "website" ? { url } : { query: searchQuery };
+      
+      const payload = activeTab === "website" 
+        ? { url, visitor_hash: visitorHash } 
+        : { query: searchQuery, visitor_hash: visitorHash };
 
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
@@ -86,7 +104,14 @@ export default function Home() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to fetch audit data");
+      if (!response.ok) {
+        // Log 422 validation errors to the console to help with debugging
+        const errorData = await response.json().catch(() => null);
+        if (errorData?.detail) {
+            console.error("Backend rejected the payload:", errorData.detail);
+        }
+        throw new Error("Failed to fetch audit data.");
+      }
       
       const data = await response.json();
       if (data.error) {
@@ -106,7 +131,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
-      {/* Update font-sans to font-gilroy in your tailwind config if you load the custom font */}
       <div className="max-w-5xl mx-auto space-y-10">
         
         <div className="text-center space-y-4">
