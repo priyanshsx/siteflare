@@ -7,8 +7,7 @@ export default function Home() {
   
   // Input States
   const [url, setUrl] = useState("");
-  const [businessName, setBusinessName] = useState("");
-  const [location, setLocation] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // UI States
   const [loading, setLoading] = useState(false);
@@ -24,11 +23,11 @@ export default function Home() {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
       
-      // Route the request based on the active tab
       const endpoint = activeTab === "website" ? "/api/audit" : "/api/local";
+      
       const payload = activeTab === "website" 
         ? { url } 
-        : { business_name: businessName, location };
+        : { query: searchQuery };
 
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
@@ -41,7 +40,6 @@ export default function Home() {
       const data = await response.json();
       if (data.error) throw new Error(data.error);
 
-      // Reusing the same scorecard UI for both tools
       setReport(data.scorecard);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
@@ -74,44 +72,47 @@ export default function Home() {
           </button>
         </div>
 
-        <form onSubmit={runAudit} className="flex flex-col md:flex-row gap-4 max-w-2xl mx-auto">
-          {activeTab === "website" ? (
-            <input
-              type="url"
-              required
-              placeholder="https://www.example.com"
-              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
-          ) : (
-            <>
+        <form onSubmit={runAudit} className="flex flex-col gap-4 max-w-2xl mx-auto">
+          <div className="flex flex-col md:flex-row gap-4">
+            {activeTab === "website" ? (
+              <input
+                type="url"
+                required
+                placeholder="https://www.example.com"
+                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            ) : (
               <input
                 type="text"
                 required
-                placeholder="Business Name (e.g., Joe's Plumbing)"
+                placeholder="e.g., Cafe Pink Hauz Khas Village"
                 className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <input
-                type="text"
-                required
-                placeholder="City, State"
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            </>
-          )}
+            )}
+            
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg font-bold text-lg transition-colors disabled:bg-indigo-400 whitespace-nowrap"
+            >
+              {loading ? "Auditing..." : "Run Audit"}
+            </button>
+          </div>
           
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg font-bold text-lg transition-colors disabled:bg-indigo-400 whitespace-nowrap"
-          >
-            {loading ? "Auditing..." : "Run Audit"}
-          </button>
+          {activeTab === "local" && (
+            <div className="bg-blue-50 border border-blue-100 text-blue-800 text-sm p-4 rounded-lg">
+              <strong>How to search:</strong>
+              <ol className="list-decimal ml-5 mt-1 space-y-1">
+                <li>Head to Google Maps.</li>
+                <li>Copy the business name as it shows up in English.</li>
+                <li>Paste it into the box above along with the city.</li>
+              </ol>
+            </div>
+          )}
         </form>
 
         {error && (

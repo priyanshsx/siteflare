@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+load_dotenv()
 API_KEY = os.environ.get('GOOGLE_API_KEY')
 # ------------------------------------------------------------- #
 
@@ -607,28 +608,25 @@ def generate_scorecard(audit_results):
 
 # nearscore local business function 
 
-async def audit_local(business_name, location):
-
-    # use httpx to make a POST request to Google Places 
+async def audit_local(query):
     async with httpx.AsyncClient(headers={"User-Agent": BROWSER_UA}, timeout=15) as client:
-        
-        # defining the payload and api_headers for the call and storing the response
-        query = f"{business_name},{location}"
         payload = {"textQuery": query}
-
-        api_headers={"X-Goog-Api-Key": API_KEY, "X-Goog-FieldMask": 'places.rating,places.userRatingCount,places.primaryType'}
-
-        response = await client.post('https://places.googleapis.com/v1/places:searchText',
-                          json=payload, headers=api_headers)
+        api_headers = {
+            "X-Goog-Api-Key": API_KEY, 
+            "X-Goog-FieldMask": "places.rating,places.userRatingCount,places.primaryType"
+        }
+        response = await client.post(
+            'https://places.googleapis.com/v1/places:searchText',
+            json=payload, 
+            headers=api_headers
+        )
         readable_response = response.json()
-    # ------------------------------------------------------------- #
 
-    # checking if the response came back empty 
     places_list = readable_response.get("places")
     if not places_list:
         return {"error": "Could not find a Google Business Profile for this search."}
     else:
-        return(places_list[0]) 
+        return places_list[0]
 # ------------------------------------------------------------- #
 
 # local scorecard function
@@ -707,23 +705,18 @@ async def run_audit(request: URLRequest):
 
 # api endpoint for local score
 class LocalRequest(BaseModel):
-    business_name: str
-    location: str
+    query: str
 
 @app.post("/api/local")
 async def run_local_audit(request: LocalRequest):
     try:
-        # 1. Fetch the data using your new Google Places function
-        raw_data = await audit_local(request.business_name, request.location)
+        raw_data = await audit_local(request.query)
         
-        # Catch the error if the business wasn't found
         if "error" in raw_data:
             return {"error": raw_data["error"]}
             
-        # 2. Run the grading engine
         scorecard = generate_local_scorecard(raw_data)
         
-        # 3. Return the unified payload to the React dashboard
         return {"scorecard": scorecard}
         
     except Exception as e:
