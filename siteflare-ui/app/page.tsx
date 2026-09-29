@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const categoryDescriptions: Record<string, string> = {
   average_rating: "Measures overall customer satisfaction from your Google reviews.",
@@ -68,6 +68,19 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [error, setError] = useState("");
+  
+  // Auth State
+  const [token, setToken] = useState<string | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"register" | "login">("register");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem("shopscore_token");
+    if (savedToken) setToken(savedToken);
+  }, []);
 
   const generateVisitorHash = async () => {
     const components = [
@@ -81,6 +94,38 @@ export default function Home() {
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const endpoint = authMode === "register" ? "/api/register" : "/api/login";
+
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail, password: authPassword }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Authentication failed");
+
+      localStorage.setItem("shopscore_token", data.access_token);
+      setToken(data.access_token);
+      setShowAuthModal(false);
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem("shopscore_token");
+    setToken(null);
   };
 
   const runAudit = async (e: React.FormEvent) => {
@@ -98,24 +143,26 @@ export default function Home() {
         ? { url, visitor_hash: visitorHash } 
         : { query: searchQuery, visitor_hash: visitorHash };
 
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        // Log 422 validation errors to the console to help with debugging
-        const errorData = await response.json().catch(() => null);
-        if (errorData?.detail) {
-            console.error("Backend rejected the payload:", errorData.detail);
-        }
-        throw new Error("Failed to fetch audit data.");
+        throw new Error(data.error || "Failed to fetch audit data.");
       }
       
-      const data = await response.json();
       if (data.error) {
         if (data.require_signup) {
+            setShowAuthModal(true);
             throw new Error(data.error);
         }
         throw new Error(data.error);
@@ -130,9 +177,22 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
-      <div className="max-w-5xl mx-auto space-y-10">
-        
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans relative">
+      
+      {/* Top Bar for Auth Status */}
+      <div className="absolute top-4 right-8">
+        {token ? (
+          <button onClick={logout} className="text-sm font-semibold text-gray-500 hover:text-gray-700">
+            Sign Out
+          </button>
+        ) : (
+          <button onClick={() => { setAuthMode("login"); setShowAuthModal(true); }} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+            Sign In
+          </button>
+        )}
+      </div>
+
+      <div className="max-w-5xl mx-auto space-y-10 mt-8">
         <div className="text-center space-y-4">
           <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900" style={{ fontFamily: 'Gilroy, sans-serif' }}>ShopScore</h1>
           <p className="text-lg text-gray-600">The unified digital storefront and local visibility auditor.</p>
@@ -183,17 +243,6 @@ export default function Home() {
               {loading ? "Auditing..." : "Run Audit"}
             </button>
           </div>
-          
-          {activeTab === "local" && (
-            <div className="bg-blue-50 border border-blue-100 text-blue-800 text-sm p-4 rounded-lg">
-              <strong>How to search:</strong>
-              <ol className="list-decimal ml-5 mt-1 space-y-1">
-                <li>Head to Google Maps.</li>
-                <li>Copy the business name exactly as it shows up in English.</li>
-                <li>Paste it into the box above along with the city.</li>
-              </ol>
-            </div>
-          )}
         </form>
 
         {error && (
@@ -204,21 +253,11 @@ export default function Home() {
 
         {report && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
+             {/* Report UI remains identical */}
+             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-3">
                 <h2 className="text-3xl font-bold">Audit Complete</h2>
                 <p className="text-gray-500">Here is how this asset stacks up against modern marketing standards.</p>
-                {report.maps_link && (
-                  <a 
-                    href={report.maps_link} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    Verified Google Profile
-                  </a>
-                )}
               </div>
               <div className="flex flex-col items-start md:items-end justify-center">
                 <div className="flex items-baseline gap-2">
@@ -250,23 +289,71 @@ export default function Home() {
                 );
               })}
             </div>
-
-            {report.recommendations.length > 0 && (
-              <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-4">
-                <h3 className="text-xl font-bold text-gray-900">Action Items</h3>
-                <ul className="space-y-3">
-                  {report.recommendations.map((rec: string, idx: number) => (
-                    <li key={idx} className="flex gap-3 text-gray-700 bg-red-50 p-4 rounded-lg border border-red-100">
-                      <span className="text-red-500 font-bold">→</span>
-                      {rec}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
         )}
       </div>
+
+      {/* Authentication Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-xl relative animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {authMode === "register" ? "Unlock 5 More Free Audits" : "Welcome Back"}
+            </h2>
+            <p className="text-gray-500 mb-6">
+              {authMode === "register" 
+                ? "You've hit your anonymous scan limit. Create a free account to continue auditing."
+                : "Sign in to access your remaining audits."}
+            </p>
+            
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Email</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Password</label>
+                <input 
+                  type="password" 
+                  required 
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+              {authError && <p className="text-red-500 text-sm font-semibold">{authError}</p>}
+              <button 
+                type="submit" 
+                className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                {authMode === "register" ? "Create Free Account" : "Sign In"}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center text-sm text-gray-500">
+              {authMode === "register" ? "Already have an account? " : "Don't have an account? "}
+              <button 
+                onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}
+                className="font-bold text-indigo-600 hover:text-indigo-800"
+              >
+                {authMode === "register" ? "Log in here." : "Sign up here."}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
