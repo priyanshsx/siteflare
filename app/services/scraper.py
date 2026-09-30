@@ -411,6 +411,52 @@ async def scrape_website(url):
             pass
         # ------------------------------------------------------------- #
 
+        # checking for sitemap data 
+        sitemap_list = audit_results["ai_readiness"].get("sitemaps", [])
+        if sitemap_list:
+            target_sitemap_url = sitemap_list[0]
+        else:
+            target_sitemap_url = f"{base}/sitemap.xml"
+
+        audit_results["ai_readiness"]["sitemap_data"] = {
+            "found": False, 
+            "type": None, 
+            "url_count": 0, 
+            "has_lastmod": False
+        }
+        try:
+            sitemap_resp = await client.get(target_sitemap_url)
+
+            if sitemap_resp.status_code == 200:
+                audit_results["ai_readiness"]["found"] = True 
+
+                xml_parser = BeautifulSoup(sitemap_resp.content, "xml")
+
+                # check if its an index or a standard url set 
+                sitemap_index = xml_parser.find("sitemapindex")
+
+                if sitemap_index:
+                    audit_results["ai_readiness"]["sitemap_data"]["type"] = "index"
+
+                    # counting child sitemap directories
+                    sitemaps = xml_parser.find_all("sitemap")
+                    audit_results["ai_readiness"]["sitemap_data"]["url_count"] = len(sitemaps)
+                else:
+                    audit_results["ai_readiness"]["sitemap_data"]["type"] = "urlset"
+
+                    # counting standard url tags
+                    urls = xml_parser.find_all("url")
+                    audit_results["ai_readiness"]["sitemap_data"]["url_count"] = len(urls)
+
+                # checking freshness
+                lastmod_tag = xml_parser.find("lastmod")
+                if lastmod_tag:
+                    audit_results["ai_readiness"]["sitemap_data"]["has_lastmod"] = True
+            
+        except httpx.HTTPError:
+            audit_results["ai_readiness"]["sitemap_variables_found"] = "None"
+        # ------------------------------------------------------------- #
+
         # parsing html using beautiful soup
         try:
             response = await client.get(url, follow_redirects=True)
