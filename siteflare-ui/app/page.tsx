@@ -26,6 +26,14 @@ const categoryMaxPoints: Record<string, number> = {
   security_tracking: 3
 };
 
+const formatCategoryLabel = (key: string): string => {
+  if (key === "ai_readiness") return "AI Readiness";
+  if (key === "seo") return "SEO";
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 const getScoreColor = (percentage: number) => {
   if (percentage >= 90) return "text-emerald-500";
   if (percentage >= 50) return "text-amber-500"; 
@@ -33,7 +41,8 @@ const getScoreColor = (percentage: number) => {
 };
 
 const CircularScore = ({ score, maxScore }: { score: number, maxScore: number }) => {
-  const percentage = Math.min((score / maxScore) * 100, 100);
+  const roundedScore = Math.round(score);
+  const percentage = Math.min((roundedScore / maxScore) * 100, 100);
   const radius = 24;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percentage / 100) * circumference;
@@ -56,7 +65,7 @@ const CircularScore = ({ score, maxScore }: { score: number, maxScore: number })
           cy="32" 
         />
       </svg>
-      <span className="absolute text-lg font-bold text-gray-800">{score}</span>
+      <span className="absolute text-lg font-bold text-gray-800">{roundedScore}</span>
     </div>
   );
 };
@@ -194,7 +203,7 @@ export default function Home() {
 
       <div className="max-w-5xl mx-auto space-y-10 mt-8">
         <div className="text-center space-y-4">
-          <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900" style={{ fontFamily: 'Gilroy, sans-serif' }}>ShopScore</h1>
+          <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900" style={{ fontFamily: 'Gilroy, sans-serif' }}>SiteFlare</h1>
           <p className="text-lg text-gray-600">The unified digital storefront and local visibility auditor.</p>
         </div>
 
@@ -203,13 +212,13 @@ export default function Home() {
             onClick={() => { setActiveTab("website"); setReport(null); setError(""); }}
             className={`flex-1 py-3 rounded-lg font-bold transition-colors ${activeTab === "website" ? "bg-indigo-50 text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
           >
-            SiteFlare Audit
+            Website Audit
           </button>
           <button 
             onClick={() => { setActiveTab("local"); setReport(null); setError(""); }}
             className={`flex-1 py-3 rounded-lg font-bold transition-colors ${activeTab === "local" ? "bg-indigo-50 text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
           >
-            LocalScore Audit
+            Local Store Audit
           </button>
         </div>
 
@@ -253,15 +262,26 @@ export default function Home() {
 
         {report && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-             {/* Report UI remains identical */}
+             
              <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-3">
                 <h2 className="text-3xl font-bold">Audit Complete</h2>
                 <p className="text-gray-500">Here is how this asset stacks up against modern marketing standards.</p>
+                {report.maps_link && (
+                  <a 
+                    href={report.maps_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors mt-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Verified Google Profile
+                  </a>
+                )}
               </div>
               <div className="flex flex-col items-start md:items-end justify-center">
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-6xl font-black ${getScoreColor(report.total_score)}`}>{report.total_score}</span>
+                  <span className={`text-6xl font-black ${getScoreColor(report.total_score)}`}>{Math.round(report.total_score)}</span>
                   <span className="text-3xl font-bold text-gray-300">/ 100</span>
                 </div>
                 <span className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Overall Score</span>
@@ -270,7 +290,7 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(report.category_scores).map(([key, score]: any) => {
-                const displayLabel = key.replace(/_/g, " ");
+                const displayLabel = formatCategoryLabel(key);
                 const description = categoryDescriptions[key] || "Metric evaluated by our auditing engine.";
                 const maxScore = categoryMaxPoints[key] || 100;
                 
@@ -278,7 +298,7 @@ export default function Home() {
                   <div key={key} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5 hover:shadow-md transition-shadow">
                     <CircularScore score={score} maxScore={maxScore} />
                     <div className="flex flex-col">
-                      <h4 className="text-lg font-bold text-gray-900 capitalize tracking-tight">
+                      <h4 className="text-lg font-bold text-gray-900 tracking-tight">
                         {displayLabel}
                       </h4>
                       <p className="text-sm text-gray-500 leading-snug mt-0.5">
@@ -289,6 +309,21 @@ export default function Home() {
                 );
               })}
             </div>
+            
+            {report.recommendations && report.recommendations.length > 0 && (
+              <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-4">
+                <h3 className="text-xl font-bold text-gray-900">Action Items</h3>
+                <ul className="space-y-3">
+                  {report.recommendations.map((rec: string, idx: number) => (
+                    <li key={idx} className="flex gap-3 text-gray-700 bg-red-50 p-4 rounded-lg border border-red-100">
+                      <span className="text-red-500 font-bold">→</span>
+                      {rec}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
           </div>
         )}
       </div>
