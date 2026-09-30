@@ -866,52 +866,87 @@ class LocalRequest(BaseModel):
 
 @app.post("/api/local")
 @limiter.limit("5/minute")
-async def run_local_audit(request: Request, body: LocalRequest):
+async def run_local_audit(request: Request, body: LocalRequest, user_id: str = Depends(get_optional_user)):
     try:
         # ------------------------------------------------------------- #
 
-        # verify if the user is eligible (the 2-scan limit per ip)
+        # opening database connection 
         connection = await asyncpg.connect(f"postgresql://{db_username}:{db_password}@localhost:5432/{db_name}")
-        record = await connection.fetchrow("SELECT scan_count FROM anonymous_limits WHERE ip_address = $1", body.visitor_hash)
         # ------------------------------------------------------------- #
 
-        # block if limit reached 
-        if record and record["scan_count"] >= 2:
-            await connection.close()
-            return {
-                "require_signup": True,
-                "error": "You've reached your 2 free anonmyous audits. Please signup to continue."
-            }
+        # authenticated user branch 
+        if user_id:
+            uid = int(user_id)
+
+            user_record = await connection.fetchrow("SELECT scans_remaining FROM users WHERE id = $1", uid)
+        # ------------------------------------------------------------- #
+
+        # block if no scans remain 
+            if user_record and user_record["scans_remaining"] < 1:
+                await connection.close()
+                return {"error": "You've exhausted your free authenticated scans. Premium upgrades coming soon!"}
+        # ------------------------------------------------------------- #
+
+        # run the audit if scans remaining
+            raw_data = await audit_local(body.query)
+            if "error" in raw_data:
+                await connection.close()
+                return {"error": raw_data["error"]}
+
+            scorecard = generate_local_scorecard(raw_data)
+        # ------------------------------------------------------------- #
+
+        # deduct the scan and update 
+
+            await connection.execute("UPDATE users SET scans_remaining = scans_remaining - 1 WHERE id = $1", uid)
+            await connection.execute(
+                "INSERT INTO audit_logs (user_id, tool_used, target_query) VALUES ($1, $2, $3)", uid, "LocalScore", body.query
+            )
         # ------------------------------------------------------------- #
         
-        # fetch google places data and catch the error if business not found
-        raw_data = await audit_local(body.query)
-        if "error" in raw_data:
-            return {"error": raw_data["error"]}
+        # anonymous user branch 
+        else:
+            anon_record = await connection.fetchrow("SELECT scan_count FROM anonymous_limits WHERE ip_address = $1", 
+                body.visitor_hash
+            )
         # ------------------------------------------------------------- #
         
-        # run the grading engine
-        scorecard = generate_local_scorecard(raw_data)
+        # 2-scan limit check 
+            if anon_record and anon_record["scan_count"] >= 2:
+                await connection.close()
+                return {
+                    "require_signup": True,
+                    "error": "You've reached your 2 free anonymous audits. Please sign in to continue."
+                }
         # ------------------------------------------------------------- #
 
-        # log the successful scan 
-        await connection.execute(
-            """
-            INSERT INTO anonymous_limits (ip_address, scan_count)
-            VALUES ($1, 1)
-            ON CONFLICT (ip_address)
-            DO UPDATE SET scan_count = anonymous_limits.scan_count + 1
-            """,
-            body.visitor_hash
-        )
+        # run the audit         
+            raw_data = await audit_local(body.query)
+            if "error" in raw_data:
+                await connection.close()
+                return {"error": raw_data["error"]}
+
+            scorecard = generate_local_scorecard(raw_data)
         # ------------------------------------------------------------- #
 
-        # close connection & return payload
+        # update anon score count
+            await connection.execute(
+                """
+                INSERT INTO anonymous_limits (ip_address, scan_count)
+                VALUES ($1, $1)
+                ON CONFLICT (ip_address)
+                DO UPDATE SET scan_count = anonymous_limits.scan_count + 1
+                """, 
+                body.visitor_hash
+            )
+        # ------------------------------------------------------------- #
+
+        # closing connection and return 
         await connection.close()
         return {"scorecard": scorecard}
-        
+    
     except Exception as e:
-        return {"error": f"An unexpected error occurred during the local audit: {str(e)}"}
+        return {"error": f"An unexpected error occurred during the local audit: {str(e)}."}
 # ------------------------------------------------------------- #
 
 
