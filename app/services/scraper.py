@@ -369,6 +369,11 @@ async def scrape_website(url):
                 audit_results["security"][item] = True 
             else:
                 audit_results["security"][item] = False
+
+        if "x-robots-tag" in response.headers:
+            audit_results["ai_readiness"]["x_robots_tag"] = response.headers.get("x-robots-tag")
+        else:
+            audit_results["ai_readiness"]["x_robots_tag"] = "None"
         # ------------------------------------------------------------- #
 
         # analytics check
@@ -464,6 +469,9 @@ async def scrape_website(url):
             if meta_name and meta_name.startswith("twitter:"):
                 meta_twitter = meta.get("content")
                 audit_results["socials"]["twitter"][meta_name] = meta_twitter
+
+            elif meta.get("name") == "robots":
+                audit_results["ai_readiness"]["meta_robots"] = meta.get("content")
         # ------------------------------------------------------------- #
 
         # favicon check
