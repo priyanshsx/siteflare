@@ -283,8 +283,70 @@ def is_public_host(hostname):
         return False
 # ------------------------------------------------------------- #
 
-# bot ua 
+# helper functions for check_bot_ua_response function 
+def looks_challenged(body_sample: str) -> bool:
+    lowered = body_sample.lower()
+    return any(marker in lowered for marker in CHALLENGE_MARKERS)
+ 
+ 
+def detect_bot_management(headers: httpx.Headers) -> list[str]:
+    found = []
+    for header_name, vendor in BOT_MANAGEMENT_SIGNATURES.items():
+        if header_name in headers and vendor not in found:
+            found.append(vendor)
+    return found
+# ------------------------------------------------------------- #
 
+# bot ua response checker function 
+
+async def check_bot_ua_responses(client: httpx.AsyncClient, url: str, baseline_word_count: int) -> dict:
+    result = {"bots": {}, "bot_management_detected": []}
+
+    for bot_name, info in BOT_UA_STRINGS.items():
+        bot_result = {
+            "label": info["label"],
+            "status": None,
+            "http_status": None, 
+            "content_length": None
+        }
+
+        try:
+            resp = await client.get(
+                url,
+                headers={"User-Agent": info["ua"]},
+                timeout=10,
+                follow_redirects=True
+            )
+            bot_result["http_status"] = resp.status_code
+
+            management = detect_bot_management(resp.headers)
+            for vendor in management:
+                if vendor not in result["bot_management_detected"]:
+                    result["bot_management_detected"].append(vendor)
+
+            if resp.status_code in (403, 429, 503):
+                bot_result["status"] = "blocked"
+            elif looks_challenged(resp.text[:2000]):
+                bot_result["status"] = "challenged"
+            elif resp.status_code >= 400:
+                bot_result["status"] = "blocked"
+            else:
+                bot_result["content_length"] = len(resp.text)
+
+                if baseline_word_count > 0:
+                    rough_word_estimate = len(resp.text.split())
+                    if rough_word_estimate < baseline_word_count * 0.5:
+                        bot_result["status"] = "challenged"
+                    else:
+                        bot_result["status"] = "ok"
+                else:
+                    bot_result["status"] = "ok"
+        except httpx.HTTPError:
+            bot_result["status"] = "error"
+
+            result["bots"][bot_name] = bot_result
+
+    return result
 # ------------------------------------------------------------- #
 
 # defining the main function 
@@ -371,6 +433,7 @@ async def scrape_website(url):
                 raise ValueError("raw fetch failed")
 
             raw_words = count_visible_words(response.text)
+            audit_results["ai_readiness"]["active_bot_challenge"] = await check_bot_ua_responses(client, url, raw_words)
             audit_results["ai_readiness"]["raw_vs_rendered"]["raw_words"] = raw_words
  
             async with async_playwright() as p:
@@ -616,10 +679,11 @@ def generate_scorecard(audit_results):
     
     # initializing the score variables 
     # ai readiness scores
-
     ai_bots_score = 0
     ai_content_score = 0
     ai_llms_score = 0
+    ai_bonus = 0
+    ai_penalty = 0
     ai_net_score = 0
     # ------------------------------------------------------------- #
     
@@ -644,13 +708,13 @@ def generate_scorecard(audit_results):
     # ------------------------------------------------------------- #
 
     # ai readiness score 
-    for bot_name in audit_results["ai_readiness"]["bots"]:
-        if audit_results["ai_readiness"]["bots"][bot_name]["allowed"] is True:
+    for bot_name in audit_results["ai_readiness"].get("bots", {}):
+        if audit_results["ai_readiness"]["bots"][bot_name].get("allowed") is True:
             ai_bots_score += 1.66
 
     ai_bots_score = min(15.0, ai_bots_score)
 
-    render_status = audit_results["ai_readiness"]["raw_vs_rendered"]["status"]
+    render_status = audit_results["ai_readiness"].get("raw_vs_rendered", {}).get("status")
     if render_status == "pass":
         ai_content_score += 10
     elif render_status == "partial":
@@ -658,53 +722,95 @@ def generate_scorecard(audit_results):
     else:
         action_items.append("JavaScript reliance may be blocking AI crawlers.")
 
-    if audit_results["ai_readiness"]["llms_text"] is True:
+    if audit_results["ai_readiness"].get("llms_text") is True:
         ai_llms_score += 5
     else:
-        action_items.append("Suggest creating an /llms.text file to guide AI crawlers to your key documentation.")
+        action_items.append("Suggest creating an /llms.txt file to guide AI crawlers to your key documentation.")
 
-    ai_net_score = round((ai_bots_score + ai_content_score + ai_llms_score), 2)
+    # 1. Reward the Sitemap
+    sitemaps = audit_results["ai_readiness"].get("sitemaps", [])
+    if len(sitemaps) > 0:
+        ai_bonus += 2
+
+    # 2. Penalize the On-Page Tags
+    blocks_ai = False
+    meta_robots = audit_results["ai_readiness"].get("meta_robots")
+    x_robots_tag = audit_results["ai_readiness"].get("x_robots_tag")
+
+    if meta_robots:
+        mr_lower = meta_robots.lower()
+        if any(tag in mr_lower for tag in ["noindex", "noai", "noimageai"]):
+            blocks_ai = True
+
+    if x_robots_tag and x_robots_tag != "None":
+        xr_lower = x_robots_tag.lower()
+        if any(tag in xr_lower for tag in ["noindex", "noai", "noimageai"]):
+            blocks_ai = True
+
+    if blocks_ai:
+        ai_penalty -= 15
+        action_items.append("Critical: On-page meta tags or X-Robots headers are explicitly blocking AI crawlers (noindex/noai/noimageai).")
+
+    # 3. Penalize the Bot Management Walls
+    active_challenge = audit_results["ai_readiness"].get("active_bot_challenge", {})
+    challenged_bots = active_challenge.get("bots", {})
+    vendors = active_challenge.get("bot_management_detected", [])
+    
+    bot_blocked = False
+    for bot_name, data in challenged_bots.items():
+        if data.get("status") in ("blocked", "challenged"):
+            bot_blocked = True
+            break
+            
+    if bot_blocked:
+        ai_penalty -= 10
+        vendor_str = f" ({', '.join(vendors)})" if vendors else ""
+        action_items.append(f"Critical: Your server's security firewall{vendor_str} is actively blocking or challenging AI agents.")
+
+    # Calculate net score (preventing it from dropping below 0)
+    ai_net_score = round((ai_bots_score + ai_content_score + ai_llms_score + ai_bonus + ai_penalty), 2)
+    ai_net_score = max(0, ai_net_score)
 
     category_scores["ai_readiness"] = ai_net_score
     total_score += ai_net_score
     # ------------------------------------------------------------- #
 
     # seo scores
-    if audit_results["seo"]["title"] != "None":
+    if audit_results["seo"].get("title") != "None":
         seo_score += 4
     else:
         action_items.append("Add a descriptive Title tag to improve search visibility.")
 
-    if audit_results["seo"]["meta_desc"] != "None":
+    if audit_results["seo"].get("meta_desc") != "None":
         seo_score += 4
     else:
         action_items.append("Add a Meta Description to improve click-through rates from search engines.")
 
-    if audit_results["seo"]["h1_count"] == 1:
+    if audit_results["seo"].get("h1_count") == 1:
         seo_score += 4
     else:
         action_items.append("Ensure your page has exactly one H1 tag to establish the main topic.")
 
-    total_images = audit_results["seo"]["images"]
+    total_images = audit_results["seo"].get("images", 0)
     if total_images == 0:
         seo_score += 4
     else:
-        missing_alt = audit_results["seo"]["alt_text"]
+        missing_alt = audit_results["seo"].get("alt_text", 0)
         seo_score += ((total_images - missing_alt) / total_images) * 4
         if missing_alt > 0:
             action_items.append(f"Add descriptive alt text to the {missing_alt} image(s) missing it for accessibility and SEO.")
 
-    if audit_results["seo"]["canonical_tag"] != "None":
+    if audit_results["seo"].get("canonical_tag") != "None":
         seo_score += 3
     else:
         action_items.append("Add a canonical tag to prevent duplicate content issues.")
 
-    if audit_results["seo"]["schema_detected"] is True:
+    if audit_results["seo"].get("schema_detected") is True:
         seo_score += 3
     else:
         action_items.append("Implement JSON-LD structured data to qualify for rich search snippets.")
 
-    if audit_results["seo"]["word_count"] > 300:
+    if audit_results["seo"].get("word_count", 0) > 300:
         seo_score += 3
     else:
         action_items.append("Increase word count above 300 words to provide more topical depth for search engines.")
@@ -714,7 +820,7 @@ def generate_scorecard(audit_results):
     # ------------------------------------------------------------- #
 
     # performance score 
-    load_time = audit_results["performance"]["load_time_seconds"]
+    load_time = audit_results["performance"].get("load_time_seconds", 5.0)
 
     if load_time < 1.0:
         perf_score += 15
@@ -731,7 +837,7 @@ def generate_scorecard(audit_results):
     # content score 
     content_score = 0
 
-    if len(audit_results["socials"]["open_graph"]) > 0 or len(audit_results["socials"]["twitter"]) > 0:
+    if len(audit_results["socials"].get("open_graph", {})) > 0 or len(audit_results["socials"].get("twitter", {})) > 0:
         content_score += 5
     else:
         action_items.append("Add Open Graph or Twitter Card tags so your links look appealing when shared on social media.")
@@ -746,13 +852,13 @@ def generate_scorecard(audit_results):
     if social_links_found == 0:
         action_items.append("No social media profiles detected. Link your social accounts to build brand authority.")
 
-    if audit_results["socials"]["favicon"] != "None":
+    if audit_results["socials"].get("favicon") != "None":
         content_score += 3
     else:
         action_items.append("Add a favicon to improve brand recognition in browser tabs.")
 
     # Checking against current year (2026)
-    if audit_results["content"]["copyright_year"] == "2026":
+    if audit_results["content"].get("copyright_year") == "2026":
         content_score += 3
     else:
         action_items.append("Update your footer copyright year to 2026 to signal that the business is active.")
@@ -762,8 +868,8 @@ def generate_scorecard(audit_results):
     # ------------------------------------------------------------- #
 
     # accessibility score 
-    total_inputs = audit_results["accessibility"]["total_inputs"]
-    missing_labels = audit_results["accessibility"]["missing_labels"]
+    total_inputs = audit_results["accessibility"].get("total_inputs", 0)
+    missing_labels = audit_results["accessibility"].get("missing_labels", 0)
 
     if total_inputs == 0:
         access_score += 10
@@ -820,7 +926,6 @@ def generate_scorecard(audit_results):
     }
 
     return final_scorecard
-# ------------------------------------------------------------- #
 
 # nearscore local business function 
 
