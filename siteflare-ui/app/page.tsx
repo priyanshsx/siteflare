@@ -16,6 +16,22 @@ interface SiteFlareScorecard {
   recommendations: string[];
 }
 
+interface SiteRawMetrics {
+  ai_readiness: {
+    robots_status: string;
+    bots: Record<string, { label: string; allowed: boolean }>;
+    sitemap_data: {
+      found: boolean;
+      type: string | null;
+      url_count: number;
+      has_lastmod: boolean;
+    };
+  };
+  performance: {
+    load_time_seconds: number;
+  };
+}
+
 interface LocalScorecard {
   total_score: number;
   category_scores: {
@@ -35,6 +51,7 @@ export default function MarketingToolsDashboard() {
   const [siteLoading, setSiteLoading] = useState(false);
   const [siteError, setSiteError] = useState<string | null>(null);
   const [siteScorecard, setSiteScorecard] = useState<SiteFlareScorecard | null>(null);
+  const [siteRawMetrics, setSiteRawMetrics] = useState<SiteRawMetrics | null>(null);
 
   // LocalScore state
   const [localQuery, setLocalQuery] = useState("");
@@ -51,6 +68,7 @@ export default function MarketingToolsDashboard() {
     setSiteLoading(true);
     setSiteError(null);
     setSiteScorecard(null);
+    setSiteRawMetrics(null);
 
     try {
       const response = await fetch("http://localhost:8000/api/audit", {
@@ -65,6 +83,7 @@ export default function MarketingToolsDashboard() {
         setSiteError(data.error || "An error occurred while auditing the website.");
       } else {
         setSiteScorecard(data.scorecard);
+        setSiteRawMetrics(data.raw_metrics);
       }
     } catch (err) {
       setSiteError("Failed to connect to backend. Is FastAPI running?");
@@ -84,7 +103,6 @@ export default function MarketingToolsDashboard() {
     setLocalScorecard(null);
 
     try {
-      // Dummy visitor hash for anonymous rate limiting
       const visitorHash = "anon-client-session-1";
 
       const response = await fetch("http://localhost:8000/api/local", {
@@ -174,7 +192,7 @@ export default function MarketingToolsDashboard() {
             )}
           </div>
 
-          {siteScorecard && (
+          {siteScorecard && siteRawMetrics && (
             <div className="max-w-5xl mx-auto">
               <div className="bg-slate-900 text-white rounded-xl p-8 mb-8 flex items-center justify-between shadow-lg">
                 <div>
@@ -192,7 +210,8 @@ export default function MarketingToolsDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* High-Level Scorecard Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-6 shadow-sm">
                   <h3 className="text-lg font-bold text-emerald-800 mb-4">✓ Where You're Good</h3>
                   <ul className="space-y-2.5 text-sm">
@@ -224,12 +243,85 @@ export default function MarketingToolsDashboard() {
                   )}
                 </div>
               </div>
+
+              {/* Secondary Raw Metrics Components */}
+              <h3 className="text-xl font-bold text-slate-800 mb-4 px-2">Technical Diagnostics</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* AI Bot Access Table */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm md:col-span-2">
+                  <h4 className="font-bold text-slate-700 mb-3 border-b pb-2">AI Bot Accessibility</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2 rounded-tl-lg">Crawler Name</th>
+                          <th className="px-4 py-2">Vendor</th>
+                          <th className="px-4 py-2 rounded-tr-lg">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(siteRawMetrics.ai_readiness.bots).map(([botKey, botData]) => (
+                          <tr key={botKey} className="border-b last:border-0">
+                            <td className="px-4 py-2.5 font-medium text-slate-800">{botKey}</td>
+                            <td className="px-4 py-2.5 text-slate-500">{botData.label}</td>
+                            <td className="px-4 py-2.5">
+                              {botData.allowed ? (
+                                <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded">Allowed</span>
+                              ) : (
+                                <span className="bg-rose-100 text-rose-800 text-xs font-bold px-2.5 py-0.5 rounded">Blocked</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Sitemap & Performance */}
+                <div className="space-y-6">
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                    <h4 className="font-bold text-slate-700 mb-3 border-b pb-2">Sitemap Health</h4>
+                    <ul className="text-sm space-y-3">
+                      <li className="flex justify-between">
+                        <span className="text-slate-500">Status</span>
+                        <span className="font-medium">{siteRawMetrics.ai_readiness.sitemap_data.found ? "Found" : "Missing"}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span className="text-slate-500">Type</span>
+                        <span className="font-medium capitalize">{siteRawMetrics.ai_readiness.sitemap_data.type || "N/A"}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span className="text-slate-500">URLs Discovered</span>
+                        <span className="font-medium">{siteRawMetrics.ai_readiness.sitemap_data.url_count}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span className="text-slate-500">&lt;lastmod&gt; Tags</span>
+                        <span className="font-medium">{siteRawMetrics.ai_readiness.sitemap_data.has_lastmod ? "Present" : "None"}</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                    <h4 className="font-bold text-slate-700 mb-3 border-b pb-2">Performance</h4>
+                    <div className="text-center py-2">
+                      <span className="block text-3xl font-black text-slate-800">
+                        {siteRawMetrics.performance.load_time_seconds.toFixed(2)}s
+                      </span>
+                      <span className="text-xs uppercase tracking-widest text-slate-400">Server Load Time</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
           )}
         </div>
       )}
 
       {/* TAB 2: LOCALSCORE */}
+      {/* ... (LocalScore code remains completely unchanged) ... */}
       {activeTab === 'localscore' && (
         <div>
           <div className="max-w-3xl mx-auto text-center mb-12">
@@ -325,7 +417,6 @@ export default function MarketingToolsDashboard() {
           )}
         </div>
       )}
-
     </div>
   );
 }
