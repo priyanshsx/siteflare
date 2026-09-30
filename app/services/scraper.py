@@ -12,7 +12,7 @@ from urllib.robotparser import RobotFileParser
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
+from fastapi import Request, Depends, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from slowapi import Limiter
@@ -22,7 +22,10 @@ from fastapi.responses import JSONResponse
 import asyncpg 
 from passlib.context import CryptContext
 import jwt
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 # ------------------------------------------------------------- #
+
+# GLOBAL SCOPE BEGINS-------------------------------------------#
 
 # loading the API KEY
 load_dotenv()
@@ -49,7 +52,30 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class AuthRequest(BaseModel):
     email: str
     password: str
+# ------------------------------------------------------------- #
 
+# creating an HTTPBearer instance 
+security = HTTPBearer(auto_error=False)
+# ------------------------------------------------------------- #
+
+# GLOBAL SCOPE ENDS---------------------------------------------#
+
+# dependency function
+async def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        return None
+    else:
+        credential = credentials.credentials
+
+    try:
+        payload = jwt.decode(credential, JWT_SECRET, algorithms=["HS256"])
+
+        return payload.get("sub")
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token.")
 # ------------------------------------------------------------- #
 
 # registration endpoint 
