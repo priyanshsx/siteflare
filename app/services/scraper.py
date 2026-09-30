@@ -45,9 +45,12 @@ app = FastAPI()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # ------------------------------------------------------------- #
 
+# global user class 
 class AuthRequest(BaseModel):
     email: str
     password: str
+
+# ------------------------------------------------------------- #
 
 # registration endpoint 
 @app.post("/api/register")
@@ -70,6 +73,32 @@ async def register_user(body: AuthRequest):
             return {"access_token": token}
         except asyncpg.exceptions.UniqueViolationError:
             return {"error": "An account with this email already exists."}
+        finally:
+            await connection.close()
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {str(e)}"}
+# ------------------------------------------------------------- #
+
+# login endpoint
+@app.post("/api/login")
+async def login_user(body: AuthRequest):
+    try:
+        connection = await asyncpg.connect(f"postgresql://{db_username}:{db_password}@localhost:5432/{db_name}")
+
+        try:
+            record = await connection.fetchrow(
+                "SELECT id, password_hash, scans_remaining FROM users WHERE email = $1", body.email
+            )
+
+            if not record:
+                return JSONResponse(status_code=401, content={"error": "Invalid credentials."})
+
+            if not pwd_context.verify(body.password, record["password_hash"]):
+                return JSONResponse(status_code=401, content={"error": "Invalid credentials."})
+            token = jwt.encode({"sub": str(record["id"])}, JWT_SECRET, algorithm="HS256")
+
+            return {"access_token": token, "scans_remaining": record["scans_remaining"]}
+        
         finally:
             await connection.close()
     except Exception as e:
