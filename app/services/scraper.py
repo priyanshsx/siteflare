@@ -253,6 +253,16 @@ BOT_MANAGEMENT_SIGNATURES = {
 }
 # ------------------------------------------------------------- #
 
+# consent managers 
+CONSENT_MANAGERS = {
+    "cdn.cookielaw.org": "OneTrust",
+    "consent.cookiebot.com": "Cookiebot",
+    "quantcast.mgr.consensu.org": "Quantcast",
+    "app.termly.io": "Termly",
+    "osano.com/osano.js": "Osano"
+}
+# ------------------------------------------------------------- #
+
 # raw vs rendered settings 
 BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -542,6 +552,14 @@ async def scrape_website(url):
         google_analytics = re.search(r"GTM-[A-Z0-9]+|G-[A-Z0-9]+", response.text)
         meta_analytics = re.search(r"fbevents\.js", response.text)
 
+        # initializing the cookie wall check 
+        audit_results["ai_readiness"]["cookie_wall_detected"] = False 
+
+        for signature in CONSENT_MANAGERS:
+            if signature in response.text:
+                audit_results["ai_readiness"]["cookie_wall_detected"] = True 
+                break
+
         if not google_analytics:
             audit_results["tracking"]["google_analytics"] = False 
         else:
@@ -761,12 +779,19 @@ def generate_scorecard(audit_results):
     ai_bots_score = min(15.0, ai_bots_score)
 
     render_status = audit_results["ai_readiness"].get("raw_vs_rendered", {}).get("status")
+    has_cookie_wall = audit_results["ai_readiness"].get("cookie_wall_detected", False)
+
     if render_status == "pass":
         ai_content_score += 10
     elif render_status == "partial":
         ai_content_score += 5
     else:
-        action_items.append("JavaScript reliance may be blocking AI crawlers.")
+        # Split the failure state to check for consent managers
+        if has_cookie_wall:
+            ai_penalty -= 5
+            action_items.append("Critical: A strict cookie consent wall is blocking AI crawlers from reading your content. Consider conditionally allowing known AI bots.")
+        else:
+            action_items.append("JavaScript reliance may be blocking AI crawlers.")
 
     if audit_results["ai_readiness"].get("llms_text") is True:
         ai_llms_score += 5
@@ -829,7 +854,7 @@ def generate_scorecard(audit_results):
         vendor_str = f" ({', '.join(vendors)})" if vendors else ""
         action_items.append(f"Critical: Your server's security firewall{vendor_str} is actively blocking or challenging AI agents.")
     # ------------------------------------------------------------- #
-    
+
     # Calculate net score (preventing it from dropping below 0)
     ai_net_score = round((ai_bots_score + ai_content_score + ai_llms_score + ai_bonus + ai_penalty), 2)
     ai_net_score = max(0, ai_net_score)
