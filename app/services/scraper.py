@@ -38,6 +38,7 @@ db_username = os.getenv('DB_USER')
 db_password = os.getenv('DB_PASSWORD')
 db_name = os.getenv('DB_NAME')
 JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-fallback-key")
+MASTER_USER_ID=os.environ.get("MASTER_USER_ID", None)
 # ------------------------------------------------------------- #
 
 # initializing the fastapi app 
@@ -875,16 +876,20 @@ async def run_local_audit(request: Request, body: LocalRequest, user_id: str = D
         # ------------------------------------------------------------- #
 
         # authenticated user branch 
+        
         if user_id:
             uid = int(user_id)
 
-            user_record = await connection.fetchrow("SELECT scans_remaining FROM users WHERE id = $1", uid)
+            is_master = (str(user_id) == str(MASTER_USER_ID))
+
+            if not is_master:
+                user_record = await connection.fetchrow("SELECT scans_remaining FROM users WHERE id = $1", uid)
         # ------------------------------------------------------------- #
 
         # block if no scans remain 
-            if user_record and user_record["scans_remaining"] < 1:
-                await connection.close()
-                return {"error": "You've exhausted your free authenticated scans. Premium upgrades coming soon!"}
+                if user_record and user_record["scans_remaining"] < 1:
+                    await connection.close()
+                    return {"error": "You've exhausted your free authenticated scans. Premium upgrades coming soon!"}
         # ------------------------------------------------------------- #
 
         # run the audit if scans remaining
