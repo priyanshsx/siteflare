@@ -204,6 +204,55 @@ AI_BOTS = {
 }
 # ------------------------------------------------------------- #
 
+# bot ua strings 
+BOT_UA_STRINGS = {
+    "GPTBot": {
+        "label": "OpenAI (training)",
+        "ua": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); "
+              "compatible; GPTBot/1.1; +https://openai.com/gptbot",
+    },
+    "ChatGPT-User": {
+        "label": "OpenAI (live browsing)",
+        "ua": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); "
+              "compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+    },
+    "ClaudeBot": {
+        "label": "Anthropic (training)",
+        "ua": "Mozilla/5.0 (compatible; ClaudeBot/1.0; "
+              "+claudebot@anthropic.com)",
+    },
+    "PerplexityBot": {
+        "label": "Perplexity",
+        "ua": "Mozilla/5.0 (compatible; PerplexityBot/1.0; "
+              "+https://perplexity.ai/perplexitybot)",
+    },
+}
+# ------------------------------------------------------------- #
+
+# challenge markers 
+CHALLENGE_MARKERS = [
+    "just a moment",           # Cloudflare interstitial
+    "cf-browser-verification", # Cloudflare
+    "__cf_chl",                # Cloudflare challenge script
+    "attention required",      # Cloudflare block page title
+    "checking your browser",   # generic / older Cloudflare
+    "access denied",           # generic WAF block
+    "ddos-guard",               # DDoS-Guard block page
+    "px-captcha",               # PerimeterX
+    "distil_r_captcha",         # Distil Networks / Imperva
+]
+# ------------------------------------------------------------- #
+
+# bot management signatures
+BOT_MANAGEMENT_SIGNATURES = {
+    "cf-ray": "Cloudflare",
+    "cf-mitigated": "Cloudflare Bot Management",
+    "x-datadome": "DataDome",
+    "x-px": "PerimeterX / HUMAN Security",
+    "x-distil-cs": "Imperva / Distil Networks",
+}
+# ------------------------------------------------------------- #
+
 # raw vs rendered settings 
 BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -232,6 +281,10 @@ def is_public_host(hostname):
         return True
     except (socket.gaierror, ValueError):
         return False
+# ------------------------------------------------------------- #
+
+# bot ua 
+
 # ------------------------------------------------------------- #
 
 # defining the main function 
