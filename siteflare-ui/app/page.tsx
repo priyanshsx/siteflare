@@ -1,394 +1,82 @@
-"use client";
+import React from 'react';
 
-import { useState, useEffect } from "react";
+export default function SiteFlareDashboard({ scorecard }) {
+  if (!scorecard) return null;
 
-const categoryDescriptions: Record<string, string> = {
-  average_rating: "Measures overall customer satisfaction from your Google reviews.",
-  total_reviews: "Evaluates the volume of reviews to indicate business velocity.",
-  profile_completeness: "Checks if core business categories and details are filled out.",
-  ai_readiness: "Evaluates how easily AI bots can crawl and index your content.",
-  seo: "Checks that ensure your page follows basic search engine advice.",
-  performance: "Audits that impact the loading speed of your site.",
-  content_social: "Analyzes social tags and brand authority indicators.",
-  accessibility: "Opportunities to improve accessibility for all visitors.",
-  security_tracking: "Ensures standard tracking pixels and secure headers are present."
-};
+  const { total_score, letter_grade, category_scores, recommendations } = scorecard;
 
-const categoryMaxPoints: Record<string, number> = {
-  average_rating: 40,
-  total_reviews: 40,
-  profile_completeness: 20,
-  ai_readiness: 15,
-  seo: 22,
-  performance: 15,
-  content_social: 15,
-  accessibility: 10,
-  security_tracking: 3
-};
-
-const formatCategoryLabel = (key: string): string => {
-  if (key === "ai_readiness") return "AI Readiness";
-  if (key === "seo") return "SEO";
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-};
-
-const getScoreColor = (percentage: number) => {
-  if (percentage >= 90) return "text-emerald-500";
-  if (percentage >= 50) return "text-amber-500"; 
-  return "text-red-500";
-};
-
-const CircularScore = ({ score, maxScore }: { score: number, maxScore: number }) => {
-  const roundedScore = Math.round(score);
-  const percentage = Math.min((roundedScore / maxScore) * 100, 100);
-  const radius = 24;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (percentage / 100) * circumference;
-  const colorClass = getScoreColor(percentage);
+  // Derive "Where you're good" by checking which categories scored highly
+  // Using arbitrary thresholds for demonstration (e.g., scoring mostly full points)
+  const strengths = [];
+  if (category_scores.ai_readiness >= 20) strengths.push("AI Crawlers can access and parse your content efficiently.");
+  if (category_scores.performance >= 10) strengths.push("Server load time is optimized for quick indexing.");
+  if (category_scores.seo >= 20) strengths.push("On-page SEO fundamentals are well-structured.");
+  if (category_scores.security_tracking >= 2) strengths.push("Basic security and marketing tracking are active.");
 
   return (
-    <div className="relative inline-flex items-center justify-center w-16 h-16 shrink-0">
-      <svg className="w-16 h-16 transform -rotate-90">
-        <circle className="text-gray-100" strokeWidth="4" stroke="currentColor" fill="transparent" r={radius} cx="32" cy="32" />
-        <circle 
-          className={`transition-all duration-1000 ${colorClass}`} 
-          strokeWidth="4" 
-          strokeDasharray={circumference} 
-          strokeDashoffset={offset} 
-          strokeLinecap="round" 
-          stroke="currentColor" 
-          fill="transparent" 
-          r={radius} 
-          cx="32" 
-          cy="32" 
-        />
-      </svg>
-      <span className="absolute text-lg font-bold text-gray-800">{roundedScore}</span>
-    </div>
-  );
-};
-
-export default function Home() {
-  const [activeTab, setActiveTab] = useState<"website" | "local">("website");
-  const [url, setUrl] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<any>(null);
-  const [error, setError] = useState("");
-  
-  // Auth State
-  const [token, setToken] = useState<string | null>(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState<"register" | "login">("register");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState("");
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem("shopscore_token");
-    if (savedToken) setToken(savedToken);
-  }, []);
-
-  const generateVisitorHash = async () => {
-    const components = [
-      navigator.userAgent,
-      window.screen.width,
-      window.screen.height,
-      navigator.language,
-    ].join("|");
-    
-    const msgBuffer = new TextEncoder().encode(components);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError("");
-    
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-    const endpoint = authMode === "register" ? "/api/register" : "/api/login";
-
-    try {
-      const response = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: authEmail, password: authPassword }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Authentication failed");
-
-      localStorage.setItem("shopscore_token", data.access_token);
-      setToken(data.access_token);
-      setShowAuthModal(false);
-      setAuthEmail("");
-      setAuthPassword("");
-    } catch (err: any) {
-      setAuthError(err.message);
-    }
-  };
-
-  const logout = () => {
-    localStorage.removeItem("shopscore_token");
-    setToken(null);
-  };
-
-  const runAudit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    setReport(null);
-
-    try {
-      const visitorHash = await generateVisitorHash();
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-      const endpoint = activeTab === "website" ? "/api/audit" : "/api/local";
+    <div className="max-w-6xl mx-auto p-6 font-sans">
       
-      const payload = activeTab === "website" 
-        ? { url, visitor_hash: visitorHash } 
-        : { query: searchQuery, visitor_hash: visitorHash };
-
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const response = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch audit data.");
-      }
-      
-      if (data.error) {
-        if (data.require_signup) {
-            setShowAuthModal(true);
-            throw new Error(data.error);
-        }
-        throw new Error(data.error);
-      }
-
-      setReport(data.scorecard);
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans relative">
-      
-      {/* Top Bar for Auth Status */}
-      <div className="absolute top-4 right-8">
-        {token ? (
-          <button onClick={logout} className="text-sm font-semibold text-gray-500 hover:text-gray-700">
-            Sign Out
-          </button>
-        ) : (
-          <button onClick={() => { setAuthMode("login"); setShowAuthModal(true); }} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
-            Sign In
-          </button>
-        )}
+      {/* Top Banner: Score & Grade */}
+      <div className="bg-slate-900 text-white rounded-xl p-8 mb-8 flex items-center justify-between shadow-lg">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Audit Complete</h1>
+          <p className="text-slate-400">Here is how AI agents and search engines see your site.</p>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="text-center">
+            <span className="block text-5xl font-black text-blue-400">{total_score}</span>
+            <span className="text-sm uppercase tracking-widest text-slate-400">Total Score</span>
+          </div>
+          <div className="text-center bg-blue-500/20 border border-blue-500/50 rounded-full h-24 w-24 flex flex-col justify-center items-center">
+            <span className="block text-4xl font-bold text-blue-400">{letter_grade}</span>
+          </div>
+        </div>
       </div>
 
-      <div className="max-w-5xl mx-auto space-y-10 mt-8">
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl font-extrabold tracking-tight text-indigo-900" style={{ fontFamily: 'Gilroy, sans-serif' }}>SiteFlare</h1>
-          <p className="text-lg text-gray-600">The unified digital storefront and local visibility auditor.</p>
+      {/* Split Layout: Good vs. Bad */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        {/* Where You're Good */}
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-emerald-800 mb-4 flex items-center gap-2">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Where You're Good
+          </h2>
+          {strengths.length > 0 ? (
+            <ul className="space-y-3">
+              {strengths.map((strength, index) => (
+                <li key={index} className="flex items-start gap-3 text-emerald-900">
+                  <span className="text-emerald-500 mt-1">•</span>
+                  <span>{strength}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-emerald-700 italic">No major strengths detected in the current audit.</p>
+          )}
         </div>
 
-        <div className="max-w-2xl mx-auto bg-white p-2 rounded-xl shadow-sm border border-gray-100 flex gap-2">
-          <button 
-            onClick={() => { setActiveTab("website"); setReport(null); setError(""); }}
-            className={`flex-1 py-3 rounded-lg font-bold transition-colors ${activeTab === "website" ? "bg-indigo-50 text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            Website Audit
-          </button>
-          <button 
-            onClick={() => { setActiveTab("local"); setReport(null); setError(""); }}
-            className={`flex-1 py-3 rounded-lg font-bold transition-colors ${activeTab === "local" ? "bg-indigo-50 text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            Local Store Audit
-          </button>
+        {/* Where You're Bad (Action Items) */}
+        <div className="bg-rose-50 border border-rose-100 rounded-xl p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-rose-800 mb-4 flex items-center gap-2">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            Critical Action Items
+          </h2>
+          {recommendations.length > 0 ? (
+            <ul className="space-y-4">
+              {recommendations.map((rec, index) => (
+                <li key={index} className="flex items-start gap-3 text-rose-900 bg-white p-3 rounded-lg border border-rose-100 shadow-sm">
+                  <span className="font-bold text-rose-500">!</span>
+                  <span>{rec}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-rose-700 italic">No critical issues found. Your site is well-optimized.</p>
+          )}
         </div>
-
-        <form onSubmit={runAudit} className="flex flex-col gap-4 max-w-2xl mx-auto">
-          <div className="flex flex-col md:flex-row gap-4">
-            {activeTab === "website" ? (
-              <input
-                type="url"
-                required
-                placeholder="https://www.example.com"
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-              />
-            ) : (
-              <input
-                type="text"
-                required
-                placeholder="e.g., Cafe Pink Hauz Khas Village"
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            )}
-            
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg font-bold text-lg transition-colors disabled:bg-indigo-400 whitespace-nowrap"
-            >
-              {loading ? "Auditing..." : "Run Audit"}
-            </button>
-          </div>
-        </form>
-
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded text-center max-w-2xl mx-auto">
-            {error}
-          </div>
-        )}
-
-        {report && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-             
-             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="space-y-3">
-                <h2 className="text-3xl font-bold">Audit Complete</h2>
-                <p className="text-gray-500">Here is how this asset stacks up against modern marketing standards.</p>
-                {report.maps_link && (
-                  <a 
-                    href={report.maps_link} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors mt-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    Verified Google Profile
-                  </a>
-                )}
-              </div>
-              <div className="flex flex-col items-start md:items-end justify-center">
-                <div className="flex items-baseline gap-2">
-                  <span className={`text-6xl font-black ${getScoreColor(report.total_score)}`}>{Math.round(report.total_score)}</span>
-                  <span className="text-3xl font-bold text-gray-300">/ 100</span>
-                </div>
-                <span className="text-sm font-bold text-gray-400 uppercase tracking-widest mt-1">Overall Score</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(report.category_scores).map(([key, score]: any) => {
-                const displayLabel = formatCategoryLabel(key);
-                const description = categoryDescriptions[key] || "Metric evaluated by our auditing engine.";
-                const maxScore = categoryMaxPoints[key] || 100;
-                
-                return (
-                  <div key={key} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5 hover:shadow-md transition-shadow">
-                    <CircularScore score={score} maxScore={maxScore} />
-                    <div className="flex flex-col">
-                      <h4 className="text-lg font-bold text-gray-900 tracking-tight">
-                        {displayLabel}
-                      </h4>
-                      <p className="text-sm text-gray-500 leading-snug mt-0.5">
-                        {description}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            
-            {report.recommendations && report.recommendations.length > 0 && (
-              <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 space-y-4">
-                <h3 className="text-xl font-bold text-gray-900">Action Items</h3>
-                <ul className="space-y-3">
-                  {report.recommendations.map((rec: string, idx: number) => (
-                    <li key={idx} className="flex gap-3 text-gray-700 bg-red-50 p-4 rounded-lg border border-red-100">
-                      <span className="text-red-500 font-bold">→</span>
-                      {rec}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            
-          </div>
-        )}
       </div>
-
-      {/* Authentication Modal */}
-      {showAuthModal && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-xl relative animate-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setShowAuthModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              ✕
-            </button>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {authMode === "register" ? "Unlock 5 More Free Audits" : "Welcome Back"}
-            </h2>
-            <p className="text-gray-500 mb-6">
-              {authMode === "register" 
-                ? "You've hit your anonymous scan limit. Create a free account to continue auditing."
-                : "Sign in to access your remaining audits."}
-            </p>
-            
-            <form onSubmit={handleAuthSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Email</label>
-                <input 
-                  type="email" 
-                  required 
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Password</label>
-                <input 
-                  type="password" 
-                  required 
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-              </div>
-              {authError && <p className="text-red-500 text-sm font-semibold">{authError}</p>}
-              <button 
-                type="submit" 
-                className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                {authMode === "register" ? "Create Free Account" : "Sign In"}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center text-sm text-gray-500">
-              {authMode === "register" ? "Already have an account? " : "Don't have an account? "}
-              <button 
-                onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}
-                className="font-bold text-indigo-600 hover:text-indigo-800"
-              >
-                {authMode === "register" ? "Log in here." : "Sign up here."}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
     </div>
   );
 }
