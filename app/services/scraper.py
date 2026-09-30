@@ -20,6 +20,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
 import asyncpg 
+from passlib.context import CryptContext
+import jwt
 # ------------------------------------------------------------- #
 
 # loading the API KEY
@@ -32,10 +34,46 @@ load_dotenv()
 db_username = os.getenv('DB_USER')
 db_password = os.getenv('DB_PASSWORD')
 db_name = os.getenv('DB_NAME')
+JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-fallback-key")
 # ------------------------------------------------------------- #
 
 # initializing the fastapi app 
 app = FastAPI()
+# ------------------------------------------------------------- #
+
+# global crypto setup
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# ------------------------------------------------------------- #
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+# registration endpoint 
+@app.post("/api/register")
+async def register_user(body: AuthRequest):
+    hashed_password = pwd_context.hash(body.password)
+
+    try: 
+        connection = await asyncpg.connect(f"postgresql://{db_username}:{db_password}@localhost:5432/{db_name}")
+
+        try:
+            record = await connection.fetchrow(
+                "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, scans_remaining",
+                body.email,
+                hashed_password
+            )
+
+            new_user_id = record["id"]
+            token = jwt.encode({"sub": str(new_user_id)}, JWT_SECRET, algorithm="HS256")
+
+            return {"access_token": token}
+        except asyncpg.exceptions.UniqueViolationError:
+            return {"error": "An account with this email already exists."}
+        finally:
+            await connection.close()
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {str(e)}"}
 # ------------------------------------------------------------- #
 
 # initializing the user_scan db
@@ -70,9 +108,6 @@ async def init_db():
 
     # closing connection 
     await connection.close()
-    # ------------------------------------------------------------- #
-
-
 # ------------------------------------------------------------- #
 
 # introducing the limiter 
@@ -823,4 +858,7 @@ async def run_local_audit(request: Request, body: LocalRequest):
     except Exception as e:
         return {"error": f"An unexpected error occurred during the local audit: {str(e)}"}
 # ------------------------------------------------------------- #
+
+
+
 
