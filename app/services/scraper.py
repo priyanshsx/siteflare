@@ -772,13 +772,28 @@ def generate_scorecard(audit_results):
         ai_llms_score += 5
     else:
         action_items.append("Suggest creating an /llms.txt file to guide AI crawlers to your key documentation.")
-
-    # 1. Reward the Sitemap
-    sitemaps = audit_results["ai_readiness"].get("sitemaps", [])
-    if len(sitemaps) > 0:
+    # ------------------------------------------------------------- #
+    
+    # reward the Sitemap
+    sitemap_metrics = audit_results["ai_readiness"].get("sitemap_data", {})
+    
+    if sitemap_metrics.get("found") is True:
         ai_bonus += 2
+        
+        # Reward populated URLs
+        if sitemap_metrics.get("url_count", 0) > 0:
+            ai_bonus += 1
+            
+        # Reward freshness signals
+        if sitemap_metrics.get("has_lastmod") is True:
+            ai_bonus += 2
+        else:
+            action_items.append("Configure your CMS to inject <lastmod> tags in your sitemap so AI crawlers know when to re-index content.")
+    else:
+        action_items.append("Critical: No valid XML sitemap was found. Generate a sitemap.xml to improve crawler discovery.")
+    # ------------------------------------------------------------- #
 
-    # 2. Penalize the On-Page Tags
+    # penalize the On-Page Tags
     blocks_ai = False
     meta_robots = audit_results["ai_readiness"].get("meta_robots")
     x_robots_tag = audit_results["ai_readiness"].get("x_robots_tag")
@@ -796,8 +811,9 @@ def generate_scorecard(audit_results):
     if blocks_ai:
         ai_penalty -= 15
         action_items.append("Critical: On-page meta tags or X-Robots headers are explicitly blocking AI crawlers (noindex/noai/noimageai).")
+    # ------------------------------------------------------------- #
 
-    # 3. Penalize the Bot Management Walls
+    # penalize the Bot Management Walls
     active_challenge = audit_results["ai_readiness"].get("active_bot_challenge", {})
     challenged_bots = active_challenge.get("bots", {})
     vendors = active_challenge.get("bot_management_detected", [])
@@ -812,7 +828,8 @@ def generate_scorecard(audit_results):
         ai_penalty -= 10
         vendor_str = f" ({', '.join(vendors)})" if vendors else ""
         action_items.append(f"Critical: Your server's security firewall{vendor_str} is actively blocking or challenging AI agents.")
-
+    # ------------------------------------------------------------- #
+    
     # Calculate net score (preventing it from dropping below 0)
     ai_net_score = round((ai_bots_score + ai_content_score + ai_llms_score + ai_bonus + ai_penalty), 2)
     ai_net_score = max(0, ai_net_score)
