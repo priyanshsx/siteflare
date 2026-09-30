@@ -8,7 +8,7 @@ import socket
 import httpx 
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
-from urllib.robotparser import RobotFileParser
+from protego import Protego
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -265,18 +265,18 @@ async def scrape_website(url):
         base = f"{root.scheme}://{root.netloc}"
         audit_results["ai_readiness"] = {"robots_status": None, "bots": {}, "llms_text": False}
 
-        rp = RobotFileParser()
-
         try:
             resp = await client.get(f"{base}/robots.txt", follow_redirects=True, timeout=10)
             if resp.status_code == 200:
-                rp.parse(resp.text.splitlines())
+                rp = Protego.parse(resp.text)
+                sitemap = list(rp.sitemaps)
                 audit_results["ai_readiness"]["robots_status"] = "found"
+                audit_results["ai_readiness"]["sitemaps"] = sitemap
             elif resp.status_code in (401, 403):
                 # we were probably blocked, this does NOT mean bots are blocked, so no bot table
                 audit_results["ai_readiness"]["robots_status"] = "forbidden"
             elif 400 <= resp.status_code < 500:
-                rp.allow_all = True
+                rp = Protego.parse("")
                 audit_results["ai_readiness"]["robots_status"] = "missing"
             else:
                 audit_results["ai_readiness"]["robots_status"] = "server_error"
@@ -284,11 +284,10 @@ async def scrape_website(url):
             audit_results["ai_readiness"]["robots_status"] = "unreachable"
         
         if audit_results["ai_readiness"]["robots_status"] in ("found", "missing"):
-            rp.modified()
             for bot, label in AI_BOTS.items():
                 audit_results["ai_readiness"]["bots"][bot] = {
                     "label": label,
-                    "allowed": rp.can_fetch(bot, f"{base}/")
+                    "allowed": rp.can_fetch(f"{base}/", bot)
                 }
         try: 
             r = await client.get(f"{base}/llms.txt", follow_redirects=True, timeout=10)
