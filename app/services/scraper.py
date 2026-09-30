@@ -938,7 +938,7 @@ async def run_local_audit(request: Request, body: LocalRequest, user_id: str = D
             await connection.execute(
                 """
                 INSERT INTO anonymous_limits (ip_address, scan_count)
-                VALUES ($1, $1)
+                VALUES ($1, 1)
                 ON CONFLICT (ip_address)
                 DO UPDATE SET scan_count = anonymous_limits.scan_count + 1
                 """, 
