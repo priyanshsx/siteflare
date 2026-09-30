@@ -388,7 +388,9 @@ async def scrape_website(url):
 
         # ai readiness check
         base = f"{root.scheme}://{root.netloc}"
-        audit_results["ai_readiness"] = {"robots_status": None, "bots": {}, "llms_text": False}
+        audit_results["ai_readiness"] = {"robots_status": None, "bots": {}, 
+                                         "llms_text": 
+                                         {"exists": False, "word_count": 0, "has_markdown": False}}
 
         try:
             resp = await client.get(f"{base}/robots.txt", follow_redirects=True, timeout=10)
@@ -414,9 +416,20 @@ async def scrape_website(url):
                     "label": label,
                     "allowed": rp.can_fetch(f"{base}/", bot)
                 }
+        # ------------------------------------------------------------- #
+
+        # llms txt check 
         try: 
             r = await client.get(f"{base}/llms.txt", follow_redirects=True, timeout=10)
-            audit_results["ai_readiness"]["llms_text"] = r.status_code == 200 and "html" not in r.headers.get("content-type", "")
+            if r.status_code == 200 and "html" not in r.headers.get("content-type", ""):
+                audit_results["ai_readiness"]["llms_text"]["exists"] = True
+                content = r.text 
+
+                words = content.split()
+                audit_results["ai_readiness"]["llms_text"]["word_count"] = len(words)
+
+                if re.search(r'(^|\n)#+\s|\]\(|\*\*|```', content):
+                    audit_results["ai_readiness"]["llms_text"]["has_markdown"] = True
         except httpx.HTTPError:
             pass
         # ------------------------------------------------------------- #
@@ -438,7 +451,7 @@ async def scrape_website(url):
             sitemap_resp = await client.get(target_sitemap_url)
 
             if sitemap_resp.status_code == 200:
-                audit_results["ai_readiness"]["found"] = True 
+                audit_results["ai_readiness"]["sitemap_data"]["found"] = True 
 
                 xml_parser = BeautifulSoup(sitemap_resp.content, "xml")
 
@@ -464,7 +477,7 @@ async def scrape_website(url):
                     audit_results["ai_readiness"]["sitemap_data"]["has_lastmod"] = True
             
         except httpx.HTTPError:
-            audit_results["ai_readiness"]["sitemap_variables_found"] = "None"
+            pass
         # ------------------------------------------------------------- #
 
         # parsing html using beautiful soup
@@ -793,8 +806,12 @@ def generate_scorecard(audit_results):
         else:
             action_items.append("JavaScript reliance may be blocking AI crawlers.")
 
-    if audit_results["ai_readiness"].get("llms_text") is True:
-        ai_llms_score += 5
+    llms_data = audit_results["ai_readiness"].get("llms_text", {})
+    if llms_data.get("exists") is True:
+        if llms_data.get("word_count", 0) >= 20 and llms_data.get("has_markdown") is True:
+            ai_llms_score += 5
+        else:
+            action_items.append("Your /llms.txt file was found, but it appears to lack sufficient content or proper Markdown formatting.")
     else:
         action_items.append("Suggest creating an /llms.txt file to guide AI crawlers to your key documentation.")
     # ------------------------------------------------------------- #
